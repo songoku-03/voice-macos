@@ -54,8 +54,11 @@ public class AppAudioNode: @unchecked Sendable {
             if status == noErr {
                 self.converter = tempConverter
                 let bytesPerFrame = Int(srcFormat.mBytesPerFrame)
-                self.renderContext = AppAudioRenderContext(ringBuffers: ringBuffers, bytesPerFrame: bytesPerFrame)
-                print("AppAudioNode: Initialized AudioConverter for format mismatch (SR: \(srcFormat.mSampleRate) -> \(dstFormat.mSampleRate), Ch: \(srcFormat.mChannelsPerFrame) -> \(dstFormat.mChannelsPerFrame))")
+                let srcInterleaved = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0
+                // Interleaved: 1 ring buffer carries all channels. Non-interleaved: 1 channel per buffer.
+                let channelsPerBuffer = srcInterleaved ? Int(srcFormat.mChannelsPerFrame) : 1
+                self.renderContext = AppAudioRenderContext(ringBuffers: ringBuffers, bytesPerFrame: bytesPerFrame, channelsPerBuffer: channelsPerBuffer)
+                print("AppAudioNode: Initialized AudioConverter for format mismatch (SR: \(srcFormat.mSampleRate) -> \(dstFormat.mSampleRate), Ch: \(srcFormat.mChannelsPerFrame) -> \(dstFormat.mChannelsPerFrame), srcInterleaved=\(srcInterleaved), chPerBuf=\(channelsPerBuffer))")
             } else {
                 print("AppAudioNode: Failed to create AudioConverter: \(status)")
                 return nil
@@ -159,12 +162,14 @@ private nonisolated(unsafe) var renderDbgCalls = 0
 public final class AppAudioRenderContext: @unchecked Sendable {
     public let ringBuffers: [RingBuffer]
     public let bytesPerFrame: Int
+    public let channelsPerBuffer: Int   // 2 for interleaved stereo in 1 buffer; 1 for non-interleaved
     let scratchCapacityFrames: Int
     let scratch: [UnsafeMutableRawPointer]
 
-    public init(ringBuffers: [RingBuffer], bytesPerFrame: Int) {
+    public init(ringBuffers: [RingBuffer], bytesPerFrame: Int, channelsPerBuffer: Int) {
         self.ringBuffers = ringBuffers
         self.bytesPerFrame = bytesPerFrame
+        self.channelsPerBuffer = channelsPerBuffer
         let capFrames = 16384  // generous; converter requests far fewer per call
         self.scratchCapacityFrames = capFrames
         self.scratch = ringBuffers.map { _ in
@@ -201,7 +206,7 @@ private let converterInputProc: AudioConverterComplexInputDataProc = { _, ioNumb
             memset(s, 0, requestedFrames * bytesPerFrame)
             buffers[i].mData = s
             buffers[i].mDataByteSize = UInt32(requestedFrames * bytesPerFrame)
-            buffers[i].mNumberChannels = 1
+            buffers[i].mNumberChannels = UInt32(context.channelsPerBuffer)
         }
         ioNumberDataPackets.pointee = UInt32(requestedFrames)
         return noErr
@@ -219,7 +224,7 @@ private let converterInputProc: AudioConverterComplexInputDataProc = { _, ioNumb
             buffers[i].mData = s
             buffers[i].mDataByteSize = UInt32(frames * bytesPerFrame)
         }
-        buffers[i].mNumberChannels = 1
+        buffers[i].mNumberChannels = UInt32(context.channelsPerBuffer)
     }
     ioNumberDataPackets.pointee = UInt32(frames)
     return noErr

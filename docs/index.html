@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoundsSource — Per-App Audio Control for macOS</title>
+  <meta name="description" content="Capture, EQ, mute and route the audio of any macOS app independently. Free menu bar app." />
+  <style>
+    :root {
+      --cyan: #22d3ee;
+      --cyan-soft: rgba(34, 211, 238, 0.15);
+      --bg: #0a0c10;
+      --bg-soft: #141820;
+      --text: #e6edf3;
+      --text-dim: #8b949e;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+    header {
+      text-align: center;
+      padding: 80px 0 60px;
+      background: radial-gradient(ellipse at top, var(--cyan-soft), transparent 70%);
+    }
+    .logo {
+      width: 84px; height: 84px;
+      margin: 0 auto 24px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 44px;
+    }
+    h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; }
+    h1 .accent { color: var(--cyan); }
+    .tagline { color: var(--text-dim); font-size: 18px; margin-top: 12px; }
+
+    .download {
+      display: inline-flex; align-items: center; gap: 10px;
+      margin-top: 36px;
+      padding: 16px 32px;
+      background: var(--cyan);
+      color: #06262e;
+      font-size: 17px; font-weight: 700;
+      text-decoration: none;
+      border-radius: 12px;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      box-shadow: 0 8px 30px rgba(34, 211, 238, 0.25);
+    }
+    .download:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(34, 211, 238, 0.35); }
+    .req { margin-top: 14px; font-size: 13px; color: var(--text-dim); }
+
+    section { padding: 48px 0; border-top: 1px solid var(--border); }
+    h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
+
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .feature {
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .feature .ico { font-size: 22px; margin-bottom: 8px; }
+    .feature h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .feature p { font-size: 13px; color: var(--text-dim); }
+
+    ol.steps { list-style: none; counter-reset: step; }
+    ol.steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 14px 0 14px 48px;
+      border-bottom: 1px solid var(--border);
+    }
+    ol.steps li:last-child { border-bottom: none; }
+    ol.steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 12px;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--cyan-soft);
+      color: var(--cyan);
+      border-radius: 50%;
+      font-weight: 700; font-size: 14px;
+    }
+    ol.steps strong { color: var(--text); }
+    code {
+      font-family: "SF Mono", Menlo, monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--cyan);
+    }
+    .note {
+      background: rgba(255, 200, 0, 0.06);
+      border: 1px solid rgba(255, 200, 0, 0.2);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-top: 20px;
+      font-size: 14px;
+    }
+    .note b { color: #ffd166; }
+    .codeblock {
+      display: block;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 12px;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 13px;
+      color: var(--text);
+      overflow-x: auto;
+      white-space: pre;
+    }
+    footer {
+      text-align: center;
+      padding: 40px 0 60px;
+      color: var(--text-dim);
+      font-size: 13px;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--cyan); text-decoration: none; }
+    @media (max-width: 600px) {
+      h1 { font-size: 34px; }
+      .features { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="logo">🎚️</div>
+      <h1>Sounds<span class="accent">Source</span></h1>
+      <p class="tagline">Điều khiển âm thanh từng app riêng biệt trên macOS.<br>Capture · Volume · EQ 10 band · Route theo từng app.</p>
+      <a class="download" href="https://github.com/songoku-03/voice-macos/releases/latest/download/SoundsSource.dmg">
+        ⬇ Tải SoundsSource.dmg
+      </a>
+      <p class="req">Yêu cầu macOS 14.2 trở lên · Miễn phí · Mã nguồn mở</p>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section>
+      <h2>Tính năng</h2>
+      <div class="features">
+        <div class="feature">
+          <div class="ico">🎙️</div>
+          <h3>Capture từng app</h3>
+          <p>Tap âm thanh của bất kỳ app nào — Spotify, Chrome, Discord, game…</p>
+        </div>
+        <div class="feature">
+          <div class="ico">🔊</div>
+          <h3>Volume &amp; Mute riêng</h3>
+          <p>Chỉnh âm lượng và tắt tiếng độc lập cho từng ứng dụng.</p>
+        </div>
+        <div class="feature">
+          <div class="ico">🎛️</div>
+          <h3>EQ 10 band</h3>
+          <p>Equalizer parametric 32 Hz – 16 kHz với curve editor kéo thả.</p>
+        </div>
+        <div class="feature">
+          <div class="ico">🎧</div>
+          <h3>Route theo app</h3>
+          <p>Gửi mỗi app ra một thiết bị khác nhau — Spotify ra tai nghe, game ra loa.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Cài đặt</h2>
+      <ol class="steps">
+        <li>Tải <strong>SoundsSource.dmg</strong> rồi mở file vừa tải.</li>
+        <li>Kéo icon <strong>SoundsSource</strong> thả vào thư mục <strong>Applications</strong>.</li>
+        <li>Mở app từ Launchpad hoặc thư mục <strong>Applications</strong>. Icon hiện trên thanh menu bar.</li>
+        <li>Cấp quyền <strong>thu âm</strong> khi macOS hỏi — cần để capture audio.</li>
+      </ol>
+
+      <div class="note">
+        <b>⚠ Lần đầu mở app bị chặn?</b><br>
+        App ký ad-hoc (không qua Apple notarization) nên macOS có thể báo "không mở được" hoặc "unidentified developer". Cách mở:<br>
+        • Chuột phải vào app trong Applications → <b>Open</b> → <b>Open</b>.<br>
+        • Hoặc chạy Terminal lệnh sau để gỡ cờ kiểm dịch:
+        <code class="codeblock">xattr -dr com.apple.quarantine /Applications/SoundsSource.app</code>
+      </div>
+    </section>
+
+    <section>
+      <h2>Build từ source</h2>
+      <code class="codeblock">git clone https://github.com/songoku-03/voice-macos.git
+cd voice-macos
+./scripts/build_dmg.sh   # tạo build/SoundsSource.dmg</code>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      SoundsSource · <a href="https://github.com/songoku-03/voice-macos">GitHub</a><br>
+      Built with CoreAudio process taps + AVAudioEngine
+    </div>
+  </footer>
+</body>
+</html>
