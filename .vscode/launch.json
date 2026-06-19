@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:soundssource}",
+      "name": "Debug SoundsSource",
+      "target": "SoundsSource",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug SoundsSource"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:soundssource}",
+      "name": "Release SoundsSource",
+      "target": "SoundsSource",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release SoundsSource"
+    }
+  ]
+}

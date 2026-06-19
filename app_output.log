@@ -1,0 +1,28 @@
+AudioEngineManager: Default device changed from 0 to 153. Migrating default-routed apps...
+OutputDeviceEngine: Output device set to 153
+OutputDeviceEngine: Started engine for device 153 at 48000.0Hz
+AudioEngineManager: Initialized with multi-engine output support.
+PresetStore: Loaded 3 presets from disk.
+SoundsSource: AppDelegate initialized successfully.
+ProcessTapManager: Started tap for 'com.spotify.client' — 48000.0Hz 2ch (interleaved)
+AppAudioNode: Initialized AudioConverter for format mismatch (SR: 48000.0 -> 48000.0, Ch: 2 -> 2)
+AudioEngineManager: Attached and connected com.spotify.client on engine device 153 bus 0
+OutputDeviceEngine: Output device set to 143
+OutputDeviceEngine: Started engine for device 143 at 44100.0Hz
+AudioEngineManager: Migrated com.spotify.client to device 143 (actual: 143) on bus 0
+ProcessTapManager: Stopped tapping com.spotify.client
+AudioEngineManager: Detached and stopped tapping com.spotify.client from engine device 143
+ProcessTapManager: Started tap for 'com.spotify.client' — 48000.0Hz 2ch (interleaved)
+AppAudioNode: Initialized AudioConverter for format mismatch (SR: 48000.0 -> 44100.0, Ch: 2 -> 2)
+AudioEngineManager: Attached and connected com.spotify.client on engine device 143 bus 0
+ProcessTapManager: Stopped tapping com.spotify.client
+AudioEngineManager: Detached and stopped tapping com.spotify.client from engine device 143
+ProcessTapManager: Started tap for 'com.spotify.client' — 48000.0Hz 2ch (interleaved)
+AppAudioNode: Initialized AudioConverter for format mismatch (SR: 48000.0 -> 44100.0, Ch: 2 -> 2)
+AudioEngineManager: Attached and connected com.spotify.client on engine device 143 bus 0
+AudioEngineManager: Default device changed from 153 to 143. Migrating default-routed apps...
+AudioEngineManager: Default device changed from 143 to 153. Migrating default-routed apps...
+AudioEngineManager: Migrated com.spotify.client to device 153 (actual: 153) on bus 0
+OutputDeviceEngine: Output device set to 110
+OutputDeviceEngine: Started engine for device 110 at 48000.0Hz
+AudioEngineManager: Migrated com.spotify.client to device 110 (actual: 110) on bus 0
