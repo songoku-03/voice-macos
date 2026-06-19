@@ -203,7 +203,7 @@ public class AudioEngineManager: @unchecked Sendable {
 
             devEngine.releaseBus(route.bus)
         }
-        
+
         ProcessTapManager.shared.stopTapping(bundleID: bundleID)
         print("AudioEngineManager: Detached and stopped tapping \(bundleID) from engine device \(route.deviceID)")
     }
@@ -248,7 +248,9 @@ public class AudioEngineManager: @unchecked Sendable {
     private func migrateActiveNode(bundleID: String, fromDevice: AudioDeviceID, toDevice: AudioDeviceID) {
         guard let appNode = activeNodes[bundleID] else { return }
         guard let oldRoute = appBusRoutes[bundleID], oldRoute.deviceID == fromDevice else { return }
-        
+
+        appNode.spectrumTap.detach()
+
         // 1. Detach from old engine
         if let oldDevEngine = engines[fromDevice] {
             oldDevEngine.engine.disconnectNodeInput(oldDevEngine.mixer, bus: oldRoute.bus)
@@ -274,11 +276,13 @@ public class AudioEngineManager: @unchecked Sendable {
         newDevEngine.engine.connect(appNode.volumeNode, to: appNode.eqNode, format: engineFormat)
         newDevEngine.engine.connect(appNode.eqNode, to: newDevEngine.mixer, fromBus: 0, toBus: bus, format: engineFormat)
 
+        appNode.spectrumTap.attach(to: appNode.eqNode)
+
         // Restore volume and mute states
         let vol = busVolumes[bundleID] ?? 1.0
         let muted = isMuted[bundleID] ?? false
         setNodeVolume(appNode.volumeNode, muted ? 0.0 : vol)
-        
+
         print("AudioEngineManager: Migrated active node \(bundleID) from default device \(fromDevice) to \(toDevice)")
     }
     

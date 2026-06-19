@@ -10,6 +10,7 @@ public class AppAudioNode: @unchecked Sendable {
     public let volumeNode: AVAudioMixerNode  // AVAudioMixerNode conforms to AVAudioMixing; eqNode does not
     public let eqNode: AVAudioUnitEQ
     public let eqController: EQController
+    public let spectrumTap = SpectrumTap()
 
     private let ringBuffers: [RingBuffer]
     private let sourceFormat: AudioStreamBasicDescription

@@ -82,8 +82,11 @@ public struct AppControlsView: View {
             
             // EQ Curve Editor
             if !isEQBypassed {
-                EQCurveEditor(eqController: eqController)
-                    .transition(.opacity)
+                EQCurveEditor(
+                    eqController: eqController,
+                    spectrum: AudioEngineManager.shared.activeNodes[bundleID]?.spectrumTap
+                )
+                .transition(.opacity)
             }
         }
         .padding(.vertical, 6)

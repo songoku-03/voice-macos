@@ -5,19 +5,25 @@ import Engine
 @available(macOS 14.2, *)
 public struct EQCurveEditor: View {
     let eqController: EQController
-    
+    let spectrum: SpectrumTap?
+
     // Binding to refresh state
     @State private var bandGains: [Float] = Array(repeating: 0.0, count: 10)
     @State private var bandFrequencies: [Float] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
     @State private var activeDragIndex: Int? = nil
-    
+    @State private var spectrumLevels: [Float] = Array(repeating: 0.0, count: 10)
+
     private let minFreq: Float = 20.0
     private let maxFreq: Float = 20000.0
     private let minGain: Float = -24.0
     private let maxGain: Float = 24.0
-    
-    public init(eqController: EQController) {
+
+    // ~30fps refresh for the spectrum bars.
+    private let spectrumTimer = Timer.publish(every: 0.033, on: .main, in: .common).autoconnect()
+
+    public init(eqController: EQController, spectrum: SpectrumTap? = nil) {
         self.eqController = eqController
+        self.spectrum = spectrum
     }
     
     public var body: some View {
@@ -43,7 +49,25 @@ public struct EQCurveEditor: View {
                         }
                     }
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    
+
+                    // 1b. Live spectrum bars (move with the music)
+                    ForEach(0..<10, id: \.self) { idx in
+                        let barW = max(4, size.width / 14)
+                        let level = CGFloat(idx < spectrumLevels.count ? spectrumLevels[idx] : 0)
+                        let h = max(1, level * size.height)
+                        let x = xForFreq(bandFrequencies[idx], width: size.width)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.cyan.opacity(0.55), Color.purple.opacity(0.12)],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                            .frame(width: barW, height: h)
+                            .position(x: x, y: size.height - h / 2)
+                    }
+
                     // 2. Draw Response Curve
                     Path { path in
                         let points = (0...Int(size.width)).map { screenX -> CGPoint in
@@ -140,6 +164,13 @@ public struct EQCurveEditor: View {
         .padding(.horizontal, 4)
         .onAppear {
             readBands()
+        }
+        .onReceive(spectrumTimer) { _ in
+            guard let spectrum = spectrum else { return }
+            let latest = spectrum.levels()
+            withAnimation(.easeOut(duration: 0.08)) {
+                spectrumLevels = latest
+            }
         }
     }
     
