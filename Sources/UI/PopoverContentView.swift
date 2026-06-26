@@ -21,12 +21,15 @@ public struct PopoverContentView: View {
 
     public init() {}
 
-    // Only show apps actively producing audio, plus any currently tapped app
-    // (so it doesn't vanish from the list when its audio pauses mid-session).
+    // Show every running audio-capable foreground app (Spotify, Chrome, Discord…) even
+    // when it's silent, so the user can pre-set EQ; the list updates in realtime as apps
+    // open/close. System daemons are excluded (isRegularApp == false). A green dot marks
+    // the ones actually producing audio right now (isRunningOutput).
     private var visibleProcesses: [AudioProcess] {
-        enumerator.processes.filter { proc in
-            proc.isRunningOutput || engineManager.activeNodes[proc.bundleID] != nil
-        }
+        AudioProcess.visibleRows(
+            from: enumerator.processes,
+            tappedBundleIDs: Set(engineManager.activeNodes.keys)
+        )
     }
     
     public var body: some View {

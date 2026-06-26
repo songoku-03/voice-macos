@@ -68,7 +68,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
         
         var newProcesses: [AudioProcess] = []
         let currentBundleID = Bundle.main.bundleIdentifier
-        
+
         for processID in processIDs {
             // Get PID
             var pidAddress = AudioObjectPropertyAddress(
@@ -121,14 +121,21 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             // row shows e.g. "Google Chrome" + icon instead of a bare "helper".
             var name = ""
             var icon: NSImage? = nil
+            // A process counts as a "regular app" if it resolves to a foreground app —
+            // either directly or via its owning app. This drives list visibility so an
+            // open audio-capable app (Spotify, Chrome) shows even while silent, while
+            // system daemons (audiomxd, mediaremoted…) — which don't resolve — stay hidden.
+            var isRegularApp = false
 
             if let runningApp = NSRunningApplication(processIdentifier: pid),
                runningApp.activationPolicy == .regular {
                 name = runningApp.localizedName ?? ""
                 icon = runningApp.icon
-            } else if let owner = resolveOwningApp(pid: pid) {
+                isRegularApp = true
+            } else if let owner = resolveOwningApp(pid: pid, bundleID: bundleID) {
                 name = owner.name
                 icon = owner.icon
+                isRegularApp = true
             }
 
             if name.isEmpty {
@@ -139,24 +146,27 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                     name = "Process \(pid)"
                 }
             }
-            
+
             let process = AudioProcess(
                 audioObjectID: processID,
                 pid: pid,
                 bundleID: bundleID,
                 name: name,
                 icon: icon,
-                isRunningOutput: isRunningOutput
+                isRunningOutput: isRunningOutput,
+                isRegularApp: isRegularApp
             )
             newProcesses.append(process)
         }
-        
+
         self.processes = newProcesses
     }
     
     // Walk up the parent-PID chain (max 5 hops) to find the first ancestor that is a
     // regular foreground app, so helper/renderer processes inherit their app's name + icon.
-    private func resolveOwningApp(pid: pid_t) -> (name: String, icon: NSImage?)? {
+    // Falls back to bundle ID prefix matching for sandboxed browsers (Chrome, Edge) whose
+    // helper processes block sysctl KERN_PROC_PID, cutting the PID chain walk short.
+    private func resolveOwningApp(pid: pid_t, bundleID: String = "") -> (name: String, icon: NSImage?)? {
         var current = pid
         var depth = 0
         while depth < 5 {
@@ -168,6 +178,20 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             current = parent
             depth += 1
         }
+
+        // Chrome helpers have bundle IDs like "com.google.Chrome.helper.renderer".
+        // Strip trailing components one by one until we match a running .regular app.
+        if !bundleID.isEmpty {
+            let parts = bundleID.components(separatedBy: ".")
+            for length in stride(from: parts.count - 1, through: 2, by: -1) {
+                let prefix = parts.prefix(length).joined(separator: ".")
+                if let app = NSRunningApplication.runningApplications(withBundleIdentifier: prefix)
+                    .first(where: { $0.activationPolicy == .regular }) {
+                    return (app.localizedName ?? "", app.icon)
+                }
+            }
+        }
+
         return nil
     }
 

@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "soundssource",
     platforms: [
-        .macOS(.v14)
+        .macOS("14.2")
     ],
     products: [
         .executable(name: "SoundsSource", targets: ["SoundsSource"])
@@ -33,6 +33,11 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals")
             ]
+        ),
+        .testTarget(
+            name: "EngineTests",
+            dependencies: ["Engine", "Core"],
+            path: "Tests/EngineTests"
         )
     ]
 )

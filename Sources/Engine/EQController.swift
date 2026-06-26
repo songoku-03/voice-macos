@@ -62,7 +62,7 @@ public class EQController: @unchecked Sendable {
     }
 }
 
-public struct EQBandData: Codable, Hashable {
+public struct EQBandData: Codable, Hashable, Sendable {
     public let frequency: Float
     public let gain: Float
     public let bandwidth: Float
@@ -78,7 +78,7 @@ public struct EQBandData: Codable, Hashable {
     }
 }
 
-public struct EQPresetData: Codable, Hashable {
+public struct EQPresetData: Codable, Hashable, Sendable {
     public let bands: [EQBandData]
     public let bypass: Bool
     public let volume: Float
