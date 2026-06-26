@@ -34,8 +34,8 @@ public struct EQCurveEditor: View {
                 ZStyle {
                     // 1. Draw Grid Lines
                     Path { path in
-                        // Horizontal Gain Grid Lines (-12dB, 0dB, 12dB)
-                        for gainVal in [-12.0, 0.0, 12.0] as [Float] {
+                        // Horizontal Gain Grid Lines (-12dB, 12dB)
+                        for gainVal in [-12.0, 12.0] as [Float] {
                             let y = yForGain(gainVal, height: size.height)
                             path.move(to: CGPoint(x: 0, y: y))
                             path.addLine(to: CGPoint(x: size.width, y: y))
@@ -48,7 +48,15 @@ public struct EQCurveEditor: View {
                             path.addLine(to: CGPoint(x: x, y: size.height))
                         }
                     }
-                    .stroke(DS.stroke.opacity(0.35), lineWidth: 0.5)
+                    .stroke(DS.stroke.opacity(0.18), lineWidth: 1.0)
+                    
+                    // 0dB Center line (thick cartoon style)
+                    Path { path in
+                        let y = yForGain(0.0, height: size.height)
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+                    .stroke(DS.stroke.opacity(0.35), lineWidth: DS.borderWidth)
 
                     // 1b. Live spectrum bars (move with the music)
                     ForEach(0..<10, id: \.self) { idx in
@@ -56,10 +64,10 @@ public struct EQCurveEditor: View {
                         let level = CGFloat(idx < spectrumLevels.count ? spectrumLevels[idx] : 0)
                         let h = max(1, level * size.height * 0.95)
                         let x = xForFreq(bandFrequencies[idx], width: size.width)
-                        RoundedRectangle(cornerRadius: 1.5)
+                        RoundedRectangle(cornerRadius: 2.0)
                             .fill(
                                 LinearGradient(
-                                    colors: [DS.accent.opacity(0.24), DS.accent.opacity(0.01)],
+                                    colors: [DS.accentPink.opacity(0.24), DS.accentPink.opacity(0.01)],
                                     startPoint: .bottom,
                                     endPoint: .top
                                 )
@@ -68,11 +76,10 @@ public struct EQCurveEditor: View {
                             .position(x: x, y: size.height - h / 2)
                     }
 
-                    // 2. Draw Response Curve
+                    // 2. Draw Response Curve (Thick cartoon curve)
                     Path { path in
                         let points = (0...Int(size.width)).map { screenX -> CGPoint in
                             let freq = freqForX(Float(screenX), width: size.width)
-                            // Estimate composite gain at this frequency
                             let gain = compositeGainAt(frequency: freq)
                             let y = yForGain(gain, height: size.height)
                             return CGPoint(x: CGFloat(screenX), y: y)
@@ -87,11 +94,10 @@ public struct EQCurveEditor: View {
                     }
                     .stroke(
                         DS.eqGradient,
-                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 4.0, lineCap: .round, lineJoin: .round)
                     )
-                    .shadow(color: DS.accent.opacity(0.3), radius: 4)
 
-                    // 3. Draw Interactive Band Nodes
+                    // 3. Draw Interactive Band Nodes (Yellow bubbles with dark outlines)
                     ForEach(0..<10, id: \.self) { idx in
                         let x = xForFreq(bandFrequencies[idx], width: size.width)
                         let y = yForGain(bandGains[idx], height: size.height)
@@ -100,28 +106,31 @@ public struct EQCurveEditor: View {
                         ZStack {
                             if isDragging {
                                 Circle()
-                                    .fill(DS.accent.opacity(0.18))
-                                    .frame(width: 22, height: 22)
-                                    .transition(.scale.combined(with: .opacity))
+                                    .fill(DS.accentPink.opacity(0.25))
+                                    .frame(width: 26, height: 26)
                             }
                             
                             Circle()
-                                .fill(isDragging ? DS.textPrimary : DS.accent)
-                                .frame(width: isDragging ? 11 : 8, height: isDragging ? 11 : 8)
-                                .shadow(color: Color.black.opacity(0.2), radius: 2)
+                                .fill(isDragging ? DS.accentPink : DS.accent)
+                                .frame(width: isDragging ? 14 : 11, height: isDragging ? 14 : 11)
                                 .overlay(
                                     Circle()
-                                        .strokeBorder(DS.textPrimary, lineWidth: 1.5)
+                                        .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                                )
+                                .background(
+                                    Circle()
+                                        .fill(DS.shadowColor)
+                                        .offset(x: 1.5, y: 1.5)
                                 )
                         }
                         .position(x: x, y: y)
                     }
                 }
-                .background(DS.bg.opacity(0.9))
+                .background(DS.surface)
                 .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.radiusM)
-                        .strokeBorder(DS.stroke, lineWidth: 1)
+                        .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
                 )
                 .gesture(
                     DragGesture(minimumDistance: 0)

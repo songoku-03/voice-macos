@@ -19,9 +19,17 @@ DerivedData/
 # Logs
 *.log
 
+# IDEs
+.vscode/
+.idea/
+
 # GitNexus (knowledge-graph index — regenerable via `gitnexus analyze`)
 .gitnexus/
 
 # Claude Code (local settings + auto-generated GitNexus skills/hooks)
 .claude/
 .agents/
+
+# OpenSpec (local changes and specification templates)
+.agent/
+openspec/

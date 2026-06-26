@@ -28,7 +28,7 @@ public struct AppControlsView: View {
                 } icon: {
                     Image(systemName: "arrow.turn.up.right")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(DS.accent)
+                        .foregroundStyle(DS.accentPink)
                 }
 
                 Spacer()
@@ -47,13 +47,17 @@ public struct AppControlsView: View {
                 Button(action: toggleMute) {
                     ZStack {
                         Circle()
-                            .fill(isMuted ? DS.danger.opacity(0.1) : DS.stroke.opacity(0.5))
+                            .fill(isMuted ? DS.danger.opacity(0.12) : DS.cardBgActive)
                             .frame(width: 24, height: 24)
                         
                         Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(isMuted ? DS.danger : DS.textSecondary)
                     }
+                    .overlay(
+                        Circle()
+                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                    )
                 }
                 .buttonStyle(.plain)
 
@@ -71,19 +75,23 @@ public struct AppControlsView: View {
                     Text(isEQBypassed ? "EQ OFF" : "EQ ON")
                         .font(DSFont.label)
                         .tracking(0.6)
-                        .padding(.horizontal, DS.s + 2)
+                        .padding(.horizontal, DS.s + 3)
+                        .padding(.vertical, DS.xs)
                         .background(
                             Group {
                                 if isEQBypassed {
-                                    DS.stroke.opacity(0.6)
+                                    DS.cardBgActive
                                 } else {
                                     DS.accentGradient
                                 }
-                            }
+                             }
                         )
-                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.textPrimary)
+                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.stroke)
                         .clipShape(Capsule())
-                        .shadow(color: isEQBypassed ? Color.clear : DS.accent.opacity(0.25), radius: 4)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -116,7 +124,7 @@ public struct AppControlsView: View {
     }
 }
 
-// MARK: - Custom Slider for Audio Controls
+// MARK: - Custom Slider for Playful Cartoon Audio Controls
 struct CustomSlider: View {
     @Binding var value: Float
     var range: ClosedRange<Float> = 0.0...2.0
@@ -129,28 +137,42 @@ struct CustomSlider: View {
             let width = geo.size.width
             let percentage = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
             let filledWidth = percentage * width
+            let thumbSize: CGFloat = 14
             
             ZStack(alignment: .leading) {
                 // Background track
                 Capsule()
-                    .fill(DS.stroke)
-                    .frame(height: 5)
+                    .fill(DS.stroke.opacity(0.3))
+                    .frame(height: 8)
+                    .overlay(
+                        Capsule()
+                            .stroke(DS.stroke, lineWidth: DS.borderWidth)
+                    )
                 
                 // Active track with gradient
                 Capsule()
                     .fill(DS.sliderGradient)
-                    .frame(width: filledWidth, height: 5)
+                    .frame(width: max(0, filledWidth), height: 8)
+                    .overlay(
+                        Capsule()
+                            .stroke(DS.stroke, lineWidth: DS.borderWidth)
+                            .frame(width: max(0, filledWidth))
+                    )
                 
                 // Thumb
                 Circle()
-                    .fill(DS.textPrimary)
-                    .frame(width: (isHovered || isDragging) ? 11 : 9, height: (isHovered || isDragging) ? 11 : 9)
-                    .shadow(color: DS.accent.opacity(isDragging ? 0.6 : 0.25), radius: 3)
+                    .fill(DS.accent)
+                    .frame(width: thumbSize, height: thumbSize)
                     .overlay(
                         Circle()
-                            .stroke(DS.accent, lineWidth: 1.5)
+                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
                     )
-                    .offset(x: max(0, min(width - ((isHovered || isDragging) ? 11 : 9), filledWidth - ((isHovered || isDragging) ? 5.5 : 4.5))))
+                    .background(
+                        Circle()
+                            .fill(DS.shadowColor)
+                            .offset(x: 2, y: 2)
+                    )
+                    .offset(x: max(0, min(width - thumbSize, filledWidth - thumbSize/2)))
             }
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())

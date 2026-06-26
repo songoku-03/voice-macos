@@ -34,92 +34,46 @@ public struct PopoverContentView: View {
     
     public var body: some View {
         VStack(spacing: 0) {
-            // Header — serif wordmark (signature detail) + device, then preset row
-            VStack(spacing: DS.m) {
-                HStack(spacing: DS.s) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(DS.accentGradient)
-                        .shadow(color: DS.accent.opacity(0.5), radius: 5)
-                    
-                    Text("MT")
-                        .font(DSFont.wordmark)
-                        .foregroundStyle(DS.textPrimary)
-                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
+            // Header — playful cartoon logo + device
+            HStack(spacing: DS.s) {
+                Image(systemName: "music.note.house.fill")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(DS.accentGradient)
+                
+                Text("Minh Thw ☁️")
+                    .font(DSFont.wordmark)
+                    .foregroundStyle(DS.textPrimary)
 
-                    Spacer(minLength: DS.s)
+                Spacer(minLength: DS.s)
 
-                    OutputDevicePicker(selection: Bindable(engineManager).selectedDeviceID)
-                }
-
-                HStack(spacing: DS.m) {
-                    Text("PRESET")
-                        .font(DSFont.label)
-                        .tracking(1.0)
-                        .foregroundStyle(DS.textTertiary)
-
-                    Menu {
-                        ForEach(store.presets) { preset in
-                            Button(action: {
-                                selectedPresetName = preset.name
-                                engineManager.loadPreset(name: preset.name)
-                            }) {
-                                HStack {
-                                    Text(preset.name)
-                                    if selectedPresetName == preset.name {
-                                        Spacer()
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: DS.xs) {
-                            Text(selectedPresetName)
-                                .font(DSFont.control)
-                                .foregroundStyle(DS.textPrimary)
-                                .fontWeight(.semibold)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(DS.textSecondary)
-                        }
-                        .padding(.horizontal, DS.s + 2)
-                        .padding(.vertical, DS.xs + 1)
-                        .background(DS.accentDim)
-                        .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DS.radiusS)
-                                .strokeBorder(DS.accent.opacity(0.25), lineWidth: 0.5)
-                        )
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-
-                    Spacer()
-                }
+                OutputDevicePicker(selection: Bindable(engineManager).selectedDeviceID)
             }
             .padding(.horizontal, DS.l)
             .padding(.vertical, DS.m + 2)
             .background(DS.surface)
-
-            Rectangle().fill(DS.stroke).frame(height: 1)
+            
+            Rectangle().fill(DS.stroke).frame(height: DS.borderWidth)
 
             // App List
             ProcessListView(processes: visibleProcesses)
 
-            Rectangle().fill(DS.stroke).frame(height: 1)
+            Rectangle().fill(DS.stroke).frame(height: DS.borderWidth)
 
             // Footer — Save Preset & Quit
             HStack {
                 Button(action: { showSaveAlert = true }) {
                     Label("Save Preset", systemImage: "plus.circle")
                         .font(DSFont.caption)
-                        .fontWeight(.semibold)
+                        .fontWeight(.bold)
                         .foregroundStyle(DS.textSecondary)
-                        .padding(.horizontal, DS.s)
-                        .padding(.vertical, DS.xs + 2)
-                        .background(DS.stroke.opacity(0.5))
+                        .padding(.horizontal, DS.m)
+                        .padding(.vertical, DS.xs + 3)
+                        .background(DS.surfaceHi)
                         .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                        )
                 }
                 .buttonStyle(.plain)
                 .hoverEffectHelper()
@@ -130,14 +84,14 @@ public struct PopoverContentView: View {
                     Text("Quit")
                         .font(DSFont.caption)
                         .fontWeight(.bold)
-                        .foregroundStyle(DS.danger.opacity(0.85))
-                        .padding(.horizontal, DS.m)
-                        .padding(.vertical, DS.xs + 2)
-                        .background(DS.danger.opacity(0.08))
+                        .foregroundStyle(DS.danger)
+                        .padding(.horizontal, DS.m + 4)
+                        .padding(.vertical, DS.xs + 3)
+                        .background(DS.danger.opacity(0.12))
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
-                                .strokeBorder(DS.danger.opacity(0.2), lineWidth: 0.5)
+                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
                         )
                 }
                 .buttonStyle(.plain)
@@ -150,12 +104,12 @@ public struct PopoverContentView: View {
         .frame(width: 360)
         .background(
             VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .overlay(DS.bg.opacity(0.85))
+                .overlay(DS.bg.opacity(0.95))
         )
         .clipShape(RoundedRectangle(cornerRadius: DS.radiusL))
         .overlay(
             RoundedRectangle(cornerRadius: DS.radiusL)
-                .strokeBorder(DS.stroke, lineWidth: 1)
+                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
         )
         .tint(DS.accent)
         .preferredColorScheme(.dark)
