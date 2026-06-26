@@ -9,7 +9,6 @@ import Core
 private class OutputDeviceEngine {
     let deviceID: AudioDeviceID
     let engine = AVAudioEngine()
-    let mixer = AVAudioMixerNode()
     
     var nextBus: AVAudioNodeBus = 0
     var freeBuses: [AVAudioNodeBus] = []
@@ -42,14 +41,11 @@ private class OutputDeviceEngine {
             print("OutputDeviceEngine: outputNode.audioUnit nil — cannot set device \(deviceID), using system default")
         }
 
-        // Query format AFTER device is set so it reflects the target device's native rate.
-        engine.attach(mixer)
-        let outputFormat = engine.outputNode.outputFormat(forBus: 0)
-        engine.connect(mixer, to: engine.outputNode, format: outputFormat)
+        let mixer = engine.mainMixerNode
 
         do {
             try engine.start()
-            print("OutputDeviceEngine: Started engine for device \(deviceID) at \(outputFormat.sampleRate)Hz")
+            print("OutputDeviceEngine: Started engine for device \(deviceID) at \(mixer.outputFormat(forBus: 0).sampleRate)Hz")
         } catch {
             print("OutputDeviceEngine: Failed to start engine for device \(deviceID): \(error)")
         }
@@ -84,6 +80,7 @@ public class AudioEngineManager: @unchecked Sendable {
             guard selectedDeviceID != oldValue else { return }
             if !_suppressFollowReset {
                 followsSystemDefault = false  // user made an explicit choice
+                setSystemDefaultOutputDeviceID(selectedDeviceID)
             }
             handleDefaultDeviceChanged(from: oldValue, to: selectedDeviceID)
         }
@@ -159,7 +156,12 @@ public class AudioEngineManager: @unchecked Sendable {
         let actualDeviceID = (targetDeviceID == kAudioObjectUnknown) ? selectedDeviceID : targetDeviceID
         let devEngine = getEngine(for: actualDeviceID)
         
-        let engineFormat = devEngine.engine.outputNode.outputFormat(forBus: 0)
+        let sampleRate = devEngine.engine.outputNode.outputFormat(forBus: 0).sampleRate
+        let resolvedRate = sampleRate > 0 ? sampleRate : 48000.0
+        guard let engineFormat = AVAudioFormat(standardFormatWithSampleRate: resolvedRate, channels: 2) else {
+            print("AudioEngineManager: Failed to create engine format for \(bundleID)")
+            return
+        }
         
         guard let appNode = AppAudioNode(ringBuffers: ringBuffers, sourceFormat: tapFormat, engineFormat: engineFormat) else {
             print("AudioEngineManager: Failed to create AppAudioNode for \(bundleID)")
@@ -173,12 +175,13 @@ public class AudioEngineManager: @unchecked Sendable {
         activeNodes[bundleID] = appNode
         
         devEngine.engine.attach(appNode.sourceNode)
-        devEngine.engine.attach(appNode.volumeNode)
         devEngine.engine.attach(appNode.eqNode)
 
-        devEngine.engine.connect(appNode.sourceNode, to: appNode.volumeNode, format: engineFormat)
-        devEngine.engine.connect(appNode.volumeNode, to: appNode.eqNode, format: engineFormat)
-        devEngine.engine.connect(appNode.eqNode, to: devEngine.mixer, fromBus: 0, toBus: bus, format: engineFormat)
+        devEngine.engine.connect(appNode.sourceNode, to: appNode.eqNode, format: engineFormat)
+        devEngine.engine.connect(appNode.eqNode, to: devEngine.engine.mainMixerNode, fromBus: 0, toBus: bus, format: engineFormat)
+        
+        // Ensure engine is running and active
+        try? devEngine.engine.start()
 
         // Check if we have cached preset settings for this app
         if let cached = cachedAppSettings[bundleID] {
@@ -186,10 +189,10 @@ public class AudioEngineManager: @unchecked Sendable {
             busVolumes[bundleID] = cached.volume
         }
 
-        // Apply volume on the volume mixer node
+        // Apply volume directly to the app node
         let vol = busVolumes[bundleID] ?? 1.0
         let muted = isMuted[bundleID] ?? false
-        setNodeVolume(appNode.volumeNode, muted ? 0.0 : vol)
+        appNode.volume = muted ? 0.0 : vol
         
         print("AudioEngineManager: Attached and connected \(bundleID) on engine device \(actualDeviceID) bus \(bus)")
     }
@@ -200,12 +203,10 @@ public class AudioEngineManager: @unchecked Sendable {
         guard let route = appBusRoutes.removeValue(forKey: bundleID) else { return }
         
         if let devEngine = engines[route.deviceID] {
-            devEngine.engine.disconnectNodeInput(devEngine.mixer, bus: route.bus)
+            devEngine.engine.disconnectNodeInput(devEngine.engine.mainMixerNode, bus: route.bus)
             devEngine.engine.disconnectNodeInput(appNode.eqNode, bus: 0)
-            devEngine.engine.disconnectNodeInput(appNode.volumeNode, bus: 0)
 
             devEngine.engine.detach(appNode.eqNode)
-            devEngine.engine.detach(appNode.volumeNode)
             devEngine.engine.detach(appNode.sourceNode)
 
             devEngine.releaseBus(route.bus)
@@ -223,18 +224,8 @@ public class AudioEngineManager: @unchecked Sendable {
         guard oldDeviceID != deviceID else { return }
         print("AudioEngineManager: Routing \(bundleID) from device \(oldDeviceID) → \(deviceID)")
         
-        // If actively tapped, restart on the new device. Reusing an AVAudioSourceNode
-        // across engines is unsafe when formats differ — stop+restart is cleanest.
-        // Capture the PID before stopAppTapping removes it from activePIDs.
-        if let pid = activePIDs[bundleID] {
-            // Cache current EQ/volume settings so they survive the stop+start cycle.
-            if let appNode = activeNodes[bundleID] {
-                let vol = busVolumes[bundleID] ?? 1.0
-                cachedAppSettings[bundleID] = appNode.eqController.getPresetData(volume: vol)
-            }
-            stopAppTapping(bundleID: bundleID)
-            startAppTapping(bundleID: bundleID, pid: pid)
-            print("AudioEngineManager: Re-routed \(bundleID) to device \(deviceID), active=\(activeNodes[bundleID] != nil)")
+        if activePIDs[bundleID] != nil {
+            routeActiveNode(bundleID: bundleID, fromDevice: oldDeviceID, toDevice: deviceID)
         }
     }
     
@@ -261,40 +252,73 @@ public class AudioEngineManager: @unchecked Sendable {
     }
     
     private func migrateActiveNode(bundleID: String, fromDevice: AudioDeviceID, toDevice: AudioDeviceID) {
-        guard let appNode = activeNodes[bundleID] else { return }
+        guard activeNodes[bundleID] != nil else { return }
         guard let oldRoute = appBusRoutes[bundleID], oldRoute.deviceID == fromDevice else { return }
 
+        print("AudioEngineManager: Migrating active node \(bundleID) from default device \(fromDevice) to \(toDevice)")
+        routeActiveNode(bundleID: bundleID, fromDevice: fromDevice, toDevice: toDevice)
+    }
+    
+    private func routeActiveNode(bundleID: String, fromDevice: AudioDeviceID, toDevice: AudioDeviceID) {
+        guard let appNode = activeNodes.removeValue(forKey: bundleID) else { return }
+        guard let oldRoute = appBusRoutes.removeValue(forKey: bundleID) else { return }
+        
         // 1. Detach from old engine
-        if let oldDevEngine = engines[fromDevice] {
-            oldDevEngine.engine.disconnectNodeInput(oldDevEngine.mixer, bus: oldRoute.bus)
-            oldDevEngine.engine.disconnectNodeInput(appNode.eqNode, bus: 0)
-            oldDevEngine.engine.disconnectNodeInput(appNode.volumeNode, bus: 0)
-            oldDevEngine.engine.detach(appNode.eqNode)
-            oldDevEngine.engine.detach(appNode.volumeNode)
-            oldDevEngine.engine.detach(appNode.sourceNode)
-            oldDevEngine.releaseBus(oldRoute.bus)
+        let actualOldDeviceID = (fromDevice == kAudioObjectUnknown) ? selectedDeviceID : fromDevice
+        if let oldEngine = engines[actualOldDeviceID] {
+            oldEngine.engine.disconnectNodeInput(oldEngine.engine.mainMixerNode, bus: oldRoute.bus)
+            oldEngine.engine.disconnectNodeInput(appNode.eqNode, bus: 0)
+
+            oldEngine.engine.detach(appNode.eqNode)
+            oldEngine.engine.detach(appNode.sourceNode)
+
+            oldEngine.releaseBus(oldRoute.bus)
         }
-
+        
         // 2. Attach to new engine
-        let newDevEngine = getEngine(for: toDevice)
-        let bus = newDevEngine.allocateBus()
-        appBusRoutes[bundleID] = AppBusRoute(deviceID: toDevice, bus: bus)
+        let actualNewDeviceID = (toDevice == kAudioObjectUnknown) ? selectedDeviceID : toDevice
+        let devEngine = getEngine(for: actualNewDeviceID)
+        
+        let sampleRate = devEngine.engine.outputNode.outputFormat(forBus: 0).sampleRate
+        let resolvedRate = sampleRate > 0 ? sampleRate : 48000.0
+        
+        guard let ringBuffers = ProcessTapManager.shared.getRingBuffers(bundleID: bundleID),
+              let tapFormat = ProcessTapManager.shared.getActiveTapFormat(bundleID: bundleID) else {
+            print("AudioEngineManager: Failed to get active tap info for routing \(bundleID)")
+            return
+        }
+        
+        guard let engineFormat = AVAudioFormat(standardFormatWithSampleRate: resolvedRate, channels: 2) else {
+            print("AudioEngineManager: Failed to create engine format for routing \(bundleID)")
+            return
+        }
+        
+        guard let newAppNode = AppAudioNode(ringBuffers: ringBuffers, sourceFormat: tapFormat, engineFormat: engineFormat) else {
+            print("AudioEngineManager: Failed to create AppAudioNode for routing \(bundleID)")
+            return
+        }
+        
+        let bus = devEngine.allocateBus()
+        appBusRoutes[bundleID] = AppBusRoute(deviceID: actualNewDeviceID, bus: bus)
+        activeNodes[bundleID] = newAppNode
+        
+        devEngine.engine.attach(newAppNode.sourceNode)
+        devEngine.engine.attach(newAppNode.eqNode)
 
-        newDevEngine.engine.attach(appNode.sourceNode)
-        newDevEngine.engine.attach(appNode.volumeNode)
-        newDevEngine.engine.attach(appNode.eqNode)
-
-        let engineFormat = newDevEngine.engine.outputNode.outputFormat(forBus: 0)
-        newDevEngine.engine.connect(appNode.sourceNode, to: appNode.volumeNode, format: engineFormat)
-        newDevEngine.engine.connect(appNode.volumeNode, to: appNode.eqNode, format: engineFormat)
-        newDevEngine.engine.connect(appNode.eqNode, to: newDevEngine.mixer, fromBus: 0, toBus: bus, format: engineFormat)
-
-        // Restore volume and mute states
-        let vol = busVolumes[bundleID] ?? 1.0
+        devEngine.engine.connect(newAppNode.sourceNode, to: newAppNode.eqNode, format: engineFormat)
+        devEngine.engine.connect(newAppNode.eqNode, to: devEngine.engine.mainMixerNode, fromBus: 0, toBus: bus, format: engineFormat)
+        
+        try? devEngine.engine.start()
+        
+        // Restore volume and EQ settings
+        let oldVol = busVolumes[bundleID] ?? 1.0
+        let oldPreset = appNode.eqController.getPresetData(volume: oldVol)
+        newAppNode.eqController.applyPresetData(oldPreset)
+        
         let muted = isMuted[bundleID] ?? false
-        setNodeVolume(appNode.volumeNode, muted ? 0.0 : vol)
-
-        print("AudioEngineManager: Migrated active node \(bundleID) from default device \(fromDevice) to \(toDevice)")
+        newAppNode.volume = muted ? 0.0 : oldVol
+        
+        print("AudioEngineManager: Successfully routed \(bundleID) to device \(actualNewDeviceID) bus \(bus)")
     }
     
     // VU Meter Level Pull (Placeholder)
@@ -305,8 +329,9 @@ public class AudioEngineManager: @unchecked Sendable {
     // Volume Control
     public func setVolume(bundleID: String, volume: Float) {
         busVolumes[bundleID] = volume
-        if let appNode = activeNodes[bundleID], !(isMuted[bundleID] ?? false) {
-            setNodeVolume(appNode.volumeNode, volume)
+        if let appNode = activeNodes[bundleID] {
+            let muted = isMuted[bundleID] ?? false
+            appNode.volume = muted ? 0.0 : volume
         }
     }
     
@@ -318,8 +343,8 @@ public class AudioEngineManager: @unchecked Sendable {
     public func setMute(bundleID: String, muted: Bool) {
         isMuted[bundleID] = muted
         if let appNode = activeNodes[bundleID] {
-            let vol: Float = muted ? 0.0 : (busVolumes[bundleID] ?? 1.0)
-            setNodeVolume(appNode.volumeNode, vol)
+            let vol = getVolume(bundleID: bundleID)
+            appNode.volume = muted ? 0.0 : vol
         }
     }
     
@@ -450,6 +475,23 @@ public class AudioEngineManager: @unchecked Sendable {
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         let status = AudioObjectGetPropertyData(systemObjectID, &address, 0, nil, &size, &deviceID)
         return status == noErr ? deviceID : kAudioObjectUnknown
+    }
+    
+    private func setSystemDefaultOutputDeviceID(_ deviceID: AudioDeviceID) {
+        guard deviceID != kAudioObjectUnknown else { return }
+        var address = AudioObjectPropertyAddress(
+            mSelector: selectorDefaultOutput,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var tempID = deviceID
+        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectSetPropertyData(systemObjectID, &address, 0, nil, size, &tempID)
+        if status != noErr {
+            print("AudioEngineManager: Failed to set system default output device to \(deviceID), error \(status)")
+        } else {
+            print("AudioEngineManager: Successfully set system default output device to \(deviceID)")
+        }
     }
     
     // Listeners

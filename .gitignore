@@ -24,3 +24,4 @@ DerivedData/
 
 # Claude Code (local settings + auto-generated GitNexus skills/hooks)
 .claude/
+.agents/

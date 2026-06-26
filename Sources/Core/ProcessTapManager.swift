@@ -91,6 +91,12 @@ public class ProcessTapManager: @unchecked Sendable {
         return activeTaps[bundleID]?.ringBuffers
     }
 
+    public func getActiveTapFormat(bundleID: String) -> AudioStreamBasicDescription? {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeTaps[bundleID]?.format
+    }
+
     fileprivate func getActiveTapInfo(for deviceID: AudioObjectID) -> ([RingBuffer], AudioStreamBasicDescription)? {
         lock.lock()
         defer { lock.unlock() }

@@ -4,10 +4,13 @@ import CoreAudio
 import AudioToolbox
 import Core
 
+final class AppAudioVolumeContainer: @unchecked Sendable {
+    var volume: Float = 1.0
+}
+
 @available(macOS 14.2, *)
 public class AppAudioNode: @unchecked Sendable {
     public let sourceNode: AVAudioSourceNode
-    public let volumeNode: AVAudioMixerNode  // AVAudioMixerNode conforms to AVAudioMixing; eqNode does not
     public let eqNode: AVAudioUnitEQ
     public let eqController: EQController
     public let spectrumTap = SpectrumTap()
@@ -19,13 +22,18 @@ public class AppAudioNode: @unchecked Sendable {
     private var converter: AudioConverterRef? = nil
     private var renderContext: AppAudioRenderContext? = nil
     
+    private let volumeContainer = AppAudioVolumeContainer()
+    public var volume: Float {
+        get { volumeContainer.volume }
+        set { volumeContainer.volume = newValue }
+    }
+    
     public init?(ringBuffers: [RingBuffer], sourceFormat: AudioStreamBasicDescription, engineFormat: AVAudioFormat) {
         self.ringBuffers = ringBuffers
         self.sourceFormat = sourceFormat
         self.engineFormat = engineFormat
         
-        // Initialize volume mixer node and EQ node
-        self.volumeNode = AVAudioMixerNode()
+        // Initialize EQ node
         self.eqNode = AVAudioUnitEQ(numberOfBands: 10)
         self.eqNode.bypass = false
         self.eqController = EQController(avAudioUnit: self.eqNode)
@@ -71,6 +79,7 @@ public class AppAudioNode: @unchecked Sendable {
         let localContext = self.renderContext
         let localBuffers = self.ringBuffers
         let bytesPerFrame = Int(dstFormat.mBytesPerFrame)
+        let localVolumeContainer = self.volumeContainer
 
         let usesConverter = (self.converter != nil)
 
@@ -140,6 +149,24 @@ public class AppAudioNode: @unchecked Sendable {
                                 }
                             } else {
                                 memset(mData, 0, bytesToRead)
+                            }
+                        }
+                    }
+                }
+            }
+
+            let vol = localVolumeContainer.volume
+            if vol < 1.0 {
+                let buffers = UnsafeMutableAudioBufferListPointer(ioData)
+                for buffer in buffers {
+                    if let mData = buffer.mData {
+                        if vol <= 0.0 {
+                            memset(mData, 0, Int(frameCount) * bytesPerFrame)
+                        } else {
+                            let ptr = mData.assumingMemoryBound(to: Float.self)
+                            let count = Int(frameCount)
+                            for i in 0..<count {
+                                ptr[i] *= vol
                             }
                         }
                     }
