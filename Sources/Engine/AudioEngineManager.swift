@@ -82,7 +82,9 @@ public class AudioEngineManager: @unchecked Sendable {
     public var selectedDeviceID: AudioDeviceID = kAudioObjectUnknown {
         didSet {
             guard selectedDeviceID != oldValue else { return }
-            followsSystemDefault = false  // user made an explicit choice
+            if !_suppressFollowReset {
+                followsSystemDefault = false  // user made an explicit choice
+            }
             handleDefaultDeviceChanged(from: oldValue, to: selectedDeviceID)
         }
     }
@@ -98,6 +100,10 @@ public class AudioEngineManager: @unchecked Sendable {
     private var isMuted: [String: Bool] = [:]
     private var activePIDs: [String: pid_t] = [:]
     private var followsSystemDefault = true  // false once user explicitly picks a device
+    // When true, the selectedDeviceID setter won't reset followsSystemDefault.
+    // Used by system-default-changed listener to update selectedDeviceID without
+    // marking it as a user-explicit pick.
+    private var _suppressFollowReset = false
     
     // Configured output routing: Bundle ID -> AudioDeviceID (kAudioObjectUnknown = Default)
     public private(set) var appOutputDevices: [String: AudioDeviceID] = [:]
@@ -116,9 +122,10 @@ public class AudioEngineManager: @unchecked Sendable {
     
     private func setupEngine() {
         let defaultID = getDefaultOutputDeviceID()
-        followsSystemDefault = true              // stays true until user picks
-        selectedDeviceID = defaultID             // init; didSet sets followsSystemDefault=false...
-        followsSystemDefault = true              // ...reset it back since this isn't a user pick
+        _suppressFollowReset = true
+        selectedDeviceID = defaultID
+        _suppressFollowReset = false
+        followsSystemDefault = true
         refreshDevices()
         if selectedDeviceID != kAudioObjectUnknown {
             _ = getEngine(for: selectedDeviceID)
@@ -214,12 +221,20 @@ public class AudioEngineManager: @unchecked Sendable {
         appOutputDevices[bundleID] = deviceID
         
         guard oldDeviceID != deviceID else { return }
+        print("AudioEngineManager: Routing \(bundleID) from device \(oldDeviceID) → \(deviceID)")
         
         // If actively tapped, restart on the new device. Reusing an AVAudioSourceNode
         // across engines is unsafe when formats differ — stop+restart is cleanest.
+        // Capture the PID before stopAppTapping removes it from activePIDs.
         if let pid = activePIDs[bundleID] {
+            // Cache current EQ/volume settings so they survive the stop+start cycle.
+            if let appNode = activeNodes[bundleID] {
+                let vol = busVolumes[bundleID] ?? 1.0
+                cachedAppSettings[bundleID] = appNode.eqController.getPresetData(volume: vol)
+            }
             stopAppTapping(bundleID: bundleID)
             startAppTapping(bundleID: bundleID, pid: pid)
+            print("AudioEngineManager: Re-routed \(bundleID) to device \(deviceID), active=\(activeNodes[bundleID] != nil)")
         }
     }
     
@@ -458,8 +473,9 @@ public class AudioEngineManager: @unchecked Sendable {
                 if !mgr.outputDevices.contains(where: { $0.deviceID == prevID }) {
                     let fallback = mgr.getDefaultOutputDeviceID()
                     if fallback != prevID {
-                        mgr.followsSystemDefault = true
+                        mgr._suppressFollowReset = true
                         mgr.selectedDeviceID = fallback
+                        mgr._suppressFollowReset = false
                         mgr.followsSystemDefault = true
                     }
                 }
@@ -478,11 +494,16 @@ public class AudioEngineManager: @unchecked Sendable {
             guard let data = inClientData else { return noErr }
             let mgr = Unmanaged<AudioEngineManager>.fromOpaque(data).takeUnretainedValue()
             Task { @MainActor in
-                guard mgr.followsSystemDefault else { return }
+                guard mgr.followsSystemDefault else {
+                    print("AudioEngineManager: System default changed but user has explicit pick — ignoring")
+                    return
+                }
                 let sysDefault = mgr.getDefaultOutputDeviceID()
                 if mgr.selectedDeviceID != sysDefault {
-                    mgr.followsSystemDefault = true   // keep flag true through this setter
+                    print("AudioEngineManager: Following system default device change → \(sysDefault)")
+                    mgr._suppressFollowReset = true
                     mgr.selectedDeviceID = sysDefault
+                    mgr._suppressFollowReset = false
                     mgr.followsSystemDefault = true
                 }
             }

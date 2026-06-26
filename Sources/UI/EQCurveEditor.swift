@@ -48,18 +48,18 @@ public struct EQCurveEditor: View {
                             path.addLine(to: CGPoint(x: x, y: size.height))
                         }
                     }
-                    .stroke(DS.stroke, lineWidth: 1)
+                    .stroke(DS.stroke.opacity(0.35), lineWidth: 0.5)
 
                     // 1b. Live spectrum bars (move with the music)
                     ForEach(0..<10, id: \.self) { idx in
-                        let barW = max(4, size.width / 14)
+                        let barW = max(3, size.width / 15)
                         let level = CGFloat(idx < spectrumLevels.count ? spectrumLevels[idx] : 0)
-                        let h = max(1, level * size.height)
+                        let h = max(1, level * size.height * 0.95)
                         let x = xForFreq(bandFrequencies[idx], width: size.width)
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: 1.5)
                             .fill(
                                 LinearGradient(
-                                    colors: [DS.accent.opacity(0.45), DS.accent.opacity(0.04)],
+                                    colors: [DS.accent.opacity(0.24), DS.accent.opacity(0.01)],
                                     startPoint: .bottom,
                                     endPoint: .top
                                 )
@@ -86,13 +86,10 @@ public struct EQCurveEditor: View {
                         }
                     }
                     .stroke(
-                        LinearGradient(
-                            colors: [DS.accent, DS.warning],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        lineWidth: 2.5
+                        DS.eqGradient,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
                     )
+                    .shadow(color: DS.accent.opacity(0.3), radius: 4)
 
                     // 3. Draw Interactive Band Nodes
                     ForEach(0..<10, id: \.self) { idx in
@@ -100,21 +97,30 @@ public struct EQCurveEditor: View {
                         let y = yForGain(bandGains[idx], height: size.height)
                         let isDragging = activeDragIndex == idx
 
-                        Circle()
-                            .fill(isDragging ? DS.accent : DS.textPrimary)
-                            .frame(width: isDragging ? 15 : 12, height: isDragging ? 15 : 12)
-                            .shadow(color: Color.black.opacity(0.35), radius: 3)
-                            .overlay(
+                        ZStack {
+                            if isDragging {
                                 Circle()
-                                    .strokeBorder(DS.accent, lineWidth: 2)
-                            )
-                            .position(x: x, y: y)
+                                    .fill(DS.accent.opacity(0.18))
+                                    .frame(width: 22, height: 22)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                            
+                            Circle()
+                                .fill(isDragging ? DS.textPrimary : DS.accent)
+                                .frame(width: isDragging ? 11 : 8, height: isDragging ? 11 : 8)
+                                .shadow(color: Color.black.opacity(0.2), radius: 2)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(DS.textPrimary, lineWidth: 1.5)
+                                )
+                        }
+                        .position(x: x, y: y)
                     }
                 }
-                .background(DS.bg)
-                .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
+                .background(DS.bg.opacity(0.9))
+                .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
                 .overlay(
-                    RoundedRectangle(cornerRadius: DS.radiusS)
+                    RoundedRectangle(cornerRadius: DS.radiusM)
                         .strokeBorder(DS.stroke, lineWidth: 1)
                 )
                 .gesture(
@@ -138,7 +144,9 @@ public struct EQCurveEditor: View {
                                     }
                                 }
                                 dragIdx = closestIdx
-                                activeDragIndex = dragIdx
+                                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                    activeDragIndex = dragIdx
+                                }
                             }
                             
                             // Update values
@@ -148,7 +156,9 @@ public struct EQCurveEditor: View {
                             updateBand(index: dragIdx, freq: newFreq, gain: newGain)
                         }
                         .onEnded { _ in
-                            activeDragIndex = nil
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                activeDragIndex = nil
+                            }
                         }
                 )
             }

@@ -17,6 +17,8 @@ public struct AppRowView: View {
         self.process = process
     }
 
+    @State private var isHovered = false
+
     public var body: some View {
         VStack(spacing: 0) {
             // Main row header
@@ -34,20 +36,25 @@ public struct AppRowView: View {
                             .padding(2)
                     }
                 }
-                .frame(width: 22, height: 22)
+                .frame(width: 24, height: 24)
                 .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
+                .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
 
                 // Name + live status
-                Text(process.name)
-                    .font(DSFont.rowTitle)
-                    .foregroundStyle(DS.textPrimary)
-                    .lineLimit(1)
-
-                if process.isRunningOutput {
-                    Circle()
-                        .fill(DS.playing)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: DS.playing.opacity(0.7), radius: 3)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: DS.xs + 2) {
+                        Text(process.name)
+                            .font(DSFont.rowTitle)
+                            .foregroundStyle(isTapped ? DS.textPrimary : DS.textSecondary)
+                            .lineLimit(1)
+                        
+                        if process.isRunningOutput {
+                            Circle()
+                                .fill(DS.playing)
+                                .frame(width: 5, height: 5)
+                                .shadow(color: DS.playing.opacity(0.8), radius: 3)
+                        }
+                    }
                 }
 
                 Spacer(minLength: DS.s)
@@ -57,40 +64,62 @@ public struct AppRowView: View {
 
                 // Capture toggle
                 Button(action: toggleTap) {
-                    Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
-                        .font(.system(size: 17))
-                        .foregroundStyle(isTapped ? DS.accent : DS.textTertiary)
+                    ZStack {
+                        Circle()
+                            .fill(isTapped ? DS.accent.opacity(0.12) : Color.clear)
+                            .frame(width: 24, height: 24)
+                        
+                        Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
+                            .font(.system(size: 18))
+                            .foregroundStyle(isTapped ? DS.accentGradient : LinearGradient(colors: [DS.textTertiary.opacity(0.6), DS.textTertiary.opacity(0.6)], startPoint: .top, endPoint: .bottom))
+                    }
                 }
                 .buttonStyle(.plain)
                 .help(isTapped ? "Stop capturing this app" : "Capture this app's audio")
 
                 // Expand chevron
-                Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { isExpanded.toggle() } }) {
+                Button(action: { 
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { 
+                        isExpanded.toggle() 
+                    } 
+                }) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(isTapped ? DS.textSecondary : DS.textTertiary.opacity(0.5))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(isTapped ? DS.textSecondary : DS.textTertiary.opacity(0.3))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .frame(width: 16, height: 16)
+                        .frame(width: 20, height: 20)
+                        .background(isExpanded ? DS.accentDim : Color.clear)
+                        .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!isTapped)
             }
-            .padding(.horizontal, DS.l)
+            .padding(.horizontal, DS.m + 2)
             .padding(.vertical, DS.m)
-            .background(isExpanded ? DS.surfaceHi : Color.clear)
-
+            
             // Expanded controls
             if isExpanded && isTapped {
                 if let appNode = engineManager.activeNodes[process.bundleID] {
                     AppControlsView(bundleID: process.bundleID, eqController: appNode.eqController)
-                        .padding(.horizontal, DS.l)
+                        .padding(.horizontal, DS.m + 2)
                         .padding(.bottom, DS.m)
-                        .background(DS.surfaceHi)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-
-            Rectangle().fill(DS.stroke.opacity(0.6)).frame(height: 1)
+        }
+        .background(
+            isExpanded ? DS.cardBgActive : (isHovered ? DS.cardBgHover : DS.cardBg)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.radiusM)
+                .strokeBorder(isExpanded ? DS.accent.opacity(0.2) : (isTapped ? DS.stroke.opacity(0.8) : DS.stroke.opacity(0.4)), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(isExpanded ? 0.16 : 0.04), radius: 5, x: 0, y: 2)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.2)) {
+                isHovered = hovering
+            }
         }
     }
 
@@ -100,6 +129,10 @@ public struct AppRowView: View {
             engineManager.stopAppTapping(bundleID: process.bundleID)
         } else {
             engineManager.startAppTapping(bundleID: process.bundleID, pid: process.pid)
+            // Auto expand when tapped
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                isExpanded = true
+            }
         }
     }
 }
@@ -116,20 +149,22 @@ struct VUMeterView: View {
     }
 
     var body: some View {
-        HStack(spacing: 1.5) {
+        HStack(spacing: 2.0) {
             ForEach(0..<6, id: \.self) { idx in
-                RoundedRectangle(cornerRadius: 0.5)
-                    .fill(isActive ? color(idx) : DS.textTertiary.opacity(0.25))
-                    .frame(width: 2, height: levels[idx] * 12)
+                RoundedRectangle(cornerRadius: 1.0)
+                    .fill(isActive ? color(idx) : DS.textTertiary.opacity(0.2))
+                    .frame(width: 2.5, height: levels[idx] * 12)
             }
         }
-        .frame(width: 22, height: 12)
+        .frame(width: 26, height: 12)
         .onReceive(timer) { _ in
             guard isActive else {
-                levels = Array(repeating: 0.1, count: 6)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    levels = Array(repeating: 0.1, count: 6)
+                }
                 return
             }
-            withAnimation(.spring(response: 0.12, dampingFraction: 0.55)) {
+            withAnimation(.spring(response: 0.1, dampingFraction: 0.5)) {
                 levels = (0..<6).map { _ in CGFloat.random(in: 0.15...1.0) }
             }
         }

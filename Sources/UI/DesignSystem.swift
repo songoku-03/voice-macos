@@ -33,9 +33,14 @@ extension Color {
 enum DS {
     // Neutrals — warm near-black, never pure #000 / #FFF (skill color rules 6 & 7)
     static let bg = Color(hex: "17161A")          // window / popover base
-    static let surface = Color(hex: "201F24")     // rows, header, footer
-    static let surfaceHi = Color(hex: "2A2930")   // expanded / hovered surface
-    static let stroke = Color(hex: "302E36")       // hairline dividers & borders
+    static let surface = Color(hex: "201F24").opacity(0.6) // translucent header, footer
+    static let surfaceHi = Color(hex: "2A2930").opacity(0.8) // expanded / hovered surface
+    static let stroke = Color(hex: "302E36").opacity(0.5) // hairline dividers & borders
+
+    // Card design backgrounds
+    static let cardBg = Color(hex: "222026").opacity(0.4)
+    static let cardBgHover = Color(hex: "2D2B33").opacity(0.65)
+    static let cardBgActive = Color(hex: "35323C").opacity(0.85)
 
     static let textPrimary = Color(hex: "F3F1EE")   // warm white
     static let textSecondary = Color(hex: "9C978F")  // warm gray
@@ -43,7 +48,24 @@ enum DS {
 
     // One warm accent defines the brand (replaces the old cyan/cyber tint)
     static let accent = Color(hex: "F0623E")        // warm coral
-    static let accentDim = Color(hex: "F0623E").opacity(0.16) // soft accent fills
+    static let accentDim = Color(hex: "F0623E").opacity(0.12) // soft accent fills
+
+    // Modern gradients for UI elements
+    static let accentGradient = LinearGradient(
+        colors: [Color(hex: "F0623E"), Color(hex: "E54E5F")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+    static let sliderGradient = LinearGradient(
+        colors: [Color(hex: "F0623E"), Color(hex: "EA5380")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+    static let eqGradient = LinearGradient(
+        colors: [Color(hex: "F0623E"), Color(hex: "E54E5F"), Color(hex: "E8A14B")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 
     // Semantic — green means "producing audio right now"; amber/red reserved for levels
     static let playing = Color(hex: "5FD08A")

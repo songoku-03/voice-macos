@@ -11,23 +11,32 @@ public struct ProcessListView: View {
     
     public var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(spacing: DS.s) {
                 if processes.isEmpty {
-                    VStack(spacing: DS.m) {
-                        Image(systemName: "speaker.wave.2")
-                            .font(.system(size: 24, weight: .light))
-                            .foregroundStyle(DS.textTertiary.opacity(0.6))
+                    VStack(spacing: DS.l) {
+                        ZStack {
+                            Circle()
+                                .fill(DS.accent.opacity(0.06))
+                                .frame(width: 54, height: 54)
+                            
+                            Image(systemName: "music.note.house.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(DS.accentGradient)
+                                .shadow(color: DS.accent.opacity(0.35), radius: 5)
+                        }
 
                         VStack(spacing: DS.xs) {
-                            Text("No audio apps running")
+                            Text("No Audio Apps Running")
+                                .font(DSFont.rowTitle)
+                                .foregroundStyle(DS.textPrimary)
+                            Text("Start playing music from Spotify, Youtube or Chrome")
                                 .font(DSFont.caption)
                                 .foregroundStyle(DS.textSecondary)
-                            Text("Open an app like Spotify or Chrome to get started")
-                                .font(.system(size: 10))
-                                .foregroundStyle(DS.textTertiary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 240)
                         }
                     }
-                    .frame(height: 150)
+                    .frame(height: 200)
                     .frame(maxWidth: .infinity)
                 } else {
                     ForEach(processes) { process in
@@ -35,7 +44,9 @@ public struct ProcessListView: View {
                     }
                 }
             }
+            .padding(.horizontal, DS.s + 2)
+            .padding(.vertical, DS.s)
         }
-        .frame(maxHeight: 280)
+        .frame(maxHeight: 300)
     }
 }
