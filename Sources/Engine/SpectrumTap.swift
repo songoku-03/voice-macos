@@ -1,4 +1,5 @@
 import Foundation
+import os
 import AVFoundation
 import Accelerate
 
@@ -19,9 +20,9 @@ public final class SpectrumTap: @unchecked Sendable {
     private let fftSetup: FFTSetup
 
     // Rolling window of the most recent mono samples (written by the audio thread).
-    private var ring: [Float]
+    private let ring: UnsafeMutablePointer<Float>
     private var writeIdx: Int = 0
-    private let ringLock = NSLock()
+    private let ringLock: UnsafeMutablePointer<os_unfair_lock_s>
 
     // FFT scratch (used only on the UI/compute thread).
     private var window: [Float]
@@ -40,7 +41,13 @@ public final class SpectrumTap: @unchecked Sendable {
         self.halfN = fftSize / 2
         self.log2n = vDSP_Length(log2(Float(fftSize)))
         self.fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
-        self.ring = [Float](repeating: 0, count: fftSize)
+        
+        self.ring = UnsafeMutablePointer<Float>.allocate(capacity: fftSize)
+        self.ring.initialize(repeating: 0, count: fftSize)
+        
+        self.ringLock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+        self.ringLock.initialize(to: os_unfair_lock_s())
+        
         self.window = [Float](repeating: 0, count: fftSize)
         self.windowed = [Float](repeating: 0, count: fftSize)
         self.realp = [Float](repeating: 0, count: fftSize / 2)
@@ -51,6 +58,12 @@ public final class SpectrumTap: @unchecked Sendable {
 
     deinit {
         vDSP_destroy_fftsetup(fftSetup)
+        
+        ring.deinitialize(count: n)
+        ring.deallocate()
+        
+        ringLock.deinitialize(count: 1)
+        ringLock.deallocate()
     }
 
     // Thread-safe snapshot for the UI.
@@ -60,17 +73,24 @@ public final class SpectrumTap: @unchecked Sendable {
     }
 
     public func reset() {
-        ringLock.lock(); for i in 0..<n { ring[i] = 0 }; writeIdx = 0; ringLock.unlock()
+        os_unfair_lock_lock(ringLock)
+        for i in 0..<n { ring[i] = 0 }
+        writeIdx = 0
+        os_unfair_lock_unlock(ringLock)
+        
         levelLock.lock(); _levels = [Float](repeating: 0, count: Self.bandCount); levelLock.unlock()
     }
 
     // Called from the AVAudioSourceNode render block. Mono-downmixes the output buffers
     // into the rolling window. Uses try() so the audio thread never blocks on the UI.
     public func capture(_ ioData: UnsafeMutablePointer<AudioBufferList>, frameCount: Int) {
-        guard ringLock.try() else { return }
+        guard os_unfair_lock_trylock(ringLock) else { return }
         let abl = UnsafeMutableAudioBufferListPointer(ioData)
         let bufCount = abl.count
-        if bufCount == 0 { ringLock.unlock(); return }
+        if bufCount == 0 {
+            os_unfair_lock_unlock(ringLock)
+            return
+        }
 
         // Engine format is non-interleaved float (one channel per buffer). Handle the
         // interleaved single-buffer case defensively too.
@@ -95,16 +115,16 @@ public final class SpectrumTap: @unchecked Sendable {
             ring[writeIdx] = s / Float(max(1, channels))
             writeIdx = (writeIdx + 1) % n
         }
-        ringLock.unlock()
+        os_unfair_lock_unlock(ringLock)
     }
 
     // Run the FFT on the latest window and update band levels. Call from a UI timer.
     public func computeLevels() {
         // Copy the rolling window in chronological order.
-        ringLock.lock()
+        os_unfair_lock_lock(ringLock)
         let start = writeIdx
         for i in 0..<n { windowed[i] = ring[(start + i) % n] }
-        ringLock.unlock()
+        os_unfair_lock_unlock(ringLock)
 
         vDSP_vmul(windowed, 1, window, 1, &windowed, 1, vDSP_Length(n))
 

@@ -73,6 +73,8 @@ public final class BreakTimerManager {
 
     // MARK: Injected dependencies
 
+    public var audioEngineManager: AudioEngineManager = .shared
+
     public weak var inputBlocker: InputBlockerProtocol?
     public weak var overlayController: BreakOverlayControllerProtocol?
 
@@ -400,7 +402,7 @@ public final class BreakTimerManager {
     // MARK: - Audio: ducking (6.2–6.6)
 
     private func duckAudio() {
-        let manager = AudioEngineManager.shared
+        let manager = audioEngineManager
         var snapshot: [String: Float] = [:]
 
         for bundleID in manager.activeNodes.keys {
@@ -423,7 +425,7 @@ public final class BreakTimerManager {
             clearDuckingPersistence()
             return
         }
-        let manager = AudioEngineManager.shared
+        let manager = audioEngineManager
         for (bundleID, vol) in preBreakVolumes {
             // 6.5: Only restore if still at ducked level (policy (b) fallback);
             // since we lock per-app volume during break (6.5 policy (a)), this is the
@@ -435,12 +437,13 @@ public final class BreakTimerManager {
     }
 
     /// Called by AudioEngineManager when a new app starts tapping mid-break (6.3).
-    public func duckNewNode(bundleID: String) {
+    public func duckNewNode(bundleID: String, manager: AudioEngineManager? = nil) {
         guard phase == .breaking else { return }
-        let manager = AudioEngineManager.shared
-        let vol = manager.getVolume(bundleID: bundleID)
+        guard preBreakVolumes[bundleID] == nil else { return }
+        let targetManager = manager ?? audioEngineManager
+        let vol = targetManager.getVolume(bundleID: bundleID)
         preBreakVolumes[bundleID] = vol   // record pre-break volume
-        manager.setVolume(bundleID: bundleID, volume: vol * 0.1)
+        targetManager.setVolume(bundleID: bundleID, volume: vol * 0.1)
 
         // Persist updated map.
         let encoded = preBreakVolumes.mapValues { Double($0) }
@@ -460,7 +463,7 @@ public final class BreakTimerManager {
             return
         }
         let snapshot = raw.compactMapValues { $0 as? Double }.mapValues { Float($0) }
-        let manager = AudioEngineManager.shared
+        let manager = audioEngineManager
         for (bundleID, vol) in snapshot {
             manager.setVolume(bundleID: bundleID, volume: vol)
         }

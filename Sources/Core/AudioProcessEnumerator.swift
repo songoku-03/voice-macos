@@ -66,8 +66,8 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             return
         }
         
-        var newProcesses: [AudioProcess] = []
         let currentBundleID = Bundle.main.bundleIdentifier
+        var coreAudioProcesses: [String: AudioProcess] = [:]
 
         for processID in processIDs {
             // Get PID
@@ -115,16 +115,8 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             let isRunningOutput = (status == noErr && isRunningOutputVal != 0)
             
             // Get application name and icon.
-            // Browsers (Chrome, CocCoc, Edge) and Electron apps (Discord) play audio
-            // through child "Helper (Renderer)" processes that have no NSRunningApplication
-            // of their own. Walk up the parent-PID chain to find the real owning app so the
-            // row shows e.g. "Google Chrome" + icon instead of a bare "helper".
             var name = ""
             var icon: NSImage? = nil
-            // A process counts as a "regular app" if it resolves to a foreground app —
-            // either directly or via its owning app. This drives list visibility so an
-            // open audio-capable app (Spotify, Chrome) shows even while silent, while
-            // system daemons (audiomxd, mediaremoted…) — which don't resolve — stay hidden.
             var isRegularApp = false
 
             if let runningApp = NSRunningApplication(processIdentifier: pid),
@@ -156,10 +148,50 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 isRunningOutput: isRunningOutput,
                 isRegularApp: isRegularApp
             )
-            newProcesses.append(process)
+            
+            let key = bundleID.isEmpty ? name : bundleID
+            coreAudioProcesses[key] = process
         }
 
-        self.processes = newProcesses
+        // Merge with all running applications via NSWorkspace
+        for app in NSWorkspace.shared.runningApplications {
+            guard app.activationPolicy == .regular else { continue }
+            guard let bundleID = app.bundleIdentifier else { continue }
+            if bundleID == currentBundleID || bundleID == "com.apple.audio.AudioComponentRegistrar" {
+                continue
+            }
+            
+            let key = bundleID
+            if let existing = coreAudioProcesses[key] {
+                var updated = existing
+                updated.isRegularApp = true
+                if updated.icon == nil {
+                    updated = AudioProcess(
+                        audioObjectID: existing.audioObjectID,
+                        pid: existing.pid,
+                        bundleID: existing.bundleID,
+                        name: existing.name,
+                        icon: app.icon,
+                        isRunningOutput: existing.isRunningOutput,
+                        isRegularApp: true
+                    )
+                }
+                coreAudioProcesses[key] = updated
+            } else {
+                let process = AudioProcess(
+                    audioObjectID: 0,
+                    pid: app.processIdentifier,
+                    bundleID: bundleID,
+                    name: app.localizedName ?? bundleID,
+                    icon: app.icon,
+                    isRunningOutput: false,
+                    isRegularApp: true
+                )
+                coreAudioProcesses[key] = process
+            }
+        }
+
+        self.processes = Array(coreAudioProcesses.values)
     }
     
     // Walk up the parent-PID chain (max 5 hops) to find the first ancestor that is a

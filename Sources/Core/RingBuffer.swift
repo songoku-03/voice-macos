@@ -1,9 +1,10 @@
 import Foundation
-import libkern // For OSMemoryBarrier
+import os
 
 public final class RingBuffer: @unchecked Sendable {
     private let capacity: Int
     private let buffer: UnsafeMutablePointer<UInt8>
+    private let lock: UnsafeMutablePointer<os_unfair_lock_s>
     
     private var writeOffset: Int = 0
     private var readOffset: Int = 0
@@ -12,14 +13,20 @@ public final class RingBuffer: @unchecked Sendable {
         self.capacity = capacity
         self.buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
         self.buffer.initialize(repeating: 0, count: capacity)
+        
+        self.lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+        self.lock.initialize(to: os_unfair_lock_s())
     }
     
     deinit {
         buffer.deallocate()
+        lock.deinitialize(count: 1)
+        lock.deallocate()
     }
     
     public var bytesAvailableForRead: Int {
-        OSMemoryBarrier()
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
         let w = writeOffset
         let r = readOffset
         if w >= r {
@@ -30,11 +37,19 @@ public final class RingBuffer: @unchecked Sendable {
     }
     
     public var bytesAvailableForWrite: Int {
-        return capacity - 1 - bytesAvailableForRead
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        let w = writeOffset
+        let r = readOffset
+        let used = w >= r ? (w - r) : (capacity - r + w)
+        return capacity - 1 - used
     }
     
     @discardableResult
     public func write(_ data: UnsafeRawPointer, byteCount: Int) -> Int {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        
         let w = writeOffset
         let r = readOffset
         
@@ -52,35 +67,30 @@ public final class RingBuffer: @unchecked Sendable {
             rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
         }
         
-        OSMemoryBarrier() // Ensure data memory writes are visible before updating index
         writeOffset = (w + byteCount) % capacity
         return byteCount
     }
     
     /// Write data into the ring buffer, overwriting oldest unread data when full.
-    ///
-    /// Unlike `write()` which drops the entire incoming block when there isn't
-    /// enough free space, this method advances the read pointer to discard the
-    /// oldest samples and always stores the newest data. This is the correct
-    /// behaviour for real-time audio capture where losing the *newest* samples
-    /// causes permanent silence (the render thread starves).
     @discardableResult
     public func writeOverwriting(_ data: UnsafeRawPointer, byteCount: Int) -> Int {
         guard byteCount > 0 && byteCount < capacity else { return 0 }
+        
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
         
         let w = writeOffset
         let r = readOffset
         let used = w >= r ? (w - r) : (capacity - r + w)
         let available = capacity - 1 - used
         
-        // If not enough space, advance read pointer to free exactly what we need.
+        var newR = r
         if available < byteCount {
             let deficit = byteCount - available
-            OSMemoryBarrier()
-            readOffset = (r + deficit) % capacity
+            newR = (r + deficit) % capacity
         }
         
-        // Now write the data (same logic as write()).
+        // Now write the data
         let rawBuffer = UnsafeMutableRawPointer(buffer)
         let firstPart = min(byteCount, capacity - w)
         rawBuffer.advanced(by: w).copyMemory(from: data, byteCount: firstPart)
@@ -90,13 +100,17 @@ public final class RingBuffer: @unchecked Sendable {
             rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
         }
         
-        OSMemoryBarrier()
+        readOffset = newR
         writeOffset = (w + byteCount) % capacity
         return byteCount
     }
     
+    /// Read data from the ring buffer.
     @discardableResult
     public func read(_ dest: UnsafeMutableRawPointer, byteCount: Int) -> Int {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        
         let r = readOffset
         let w = writeOffset
         
@@ -114,14 +128,14 @@ public final class RingBuffer: @unchecked Sendable {
             dest.advanced(by: firstPart).copyMemory(from: rawBuffer, byteCount: secondPart)
         }
         
-        OSMemoryBarrier() // Ensure reads are complete before updating index
         readOffset = (r + byteCount) % capacity
         return byteCount
     }
     
     public func clear() {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
         writeOffset = 0
         readOffset = 0
-        OSMemoryBarrier()
     }
 }

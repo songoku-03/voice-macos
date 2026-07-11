@@ -1,11 +1,67 @@
 import Foundation
+import os
 import AVFoundation
 import CoreAudio
 import AudioToolbox
 import Core
 
-final class AppAudioVolumeContainer: @unchecked Sendable {
-    var volume: Float = 1.0
+public struct AppAudioConverterContext {
+    public let ringBuffers: UnsafeMutablePointer<UnsafeMutableRawPointer>
+    public let ringBufferCount: Int
+    public let bytesPerFrame: Int
+    public let channelsPerBuffer: Int
+    public let scratch: UnsafeMutablePointer<UnsafeMutableRawPointer>
+    public let scratchCapacityFrames: Int
+    public let lock: UnsafeMutablePointer<os_unfair_lock_s>
+}
+
+public final class AppAudioNodeLifetimeToken: @unchecked Sendable {
+    let converter: AudioConverterRef?
+    let buffersPtr: UnsafeMutablePointer<UnsafeMutableRawPointer>
+    let contextPtr: UnsafeMutablePointer<AppAudioConverterContext>?
+    let volumePtr: UnsafeMutablePointer<Float>
+    let volumeLock: UnsafeMutablePointer<os_unfair_lock_s>
+    let converterLock: UnsafeMutablePointer<os_unfair_lock_s>?
+    
+    init(
+        converter: AudioConverterRef?,
+        buffersPtr: UnsafeMutablePointer<UnsafeMutableRawPointer>,
+        contextPtr: UnsafeMutablePointer<AppAudioConverterContext>?,
+        volumePtr: UnsafeMutablePointer<Float>,
+        volumeLock: UnsafeMutablePointer<os_unfair_lock_s>,
+        converterLock: UnsafeMutablePointer<os_unfair_lock_s>?
+    ) {
+        self.converter = converter
+        self.buffersPtr = buffersPtr
+        self.contextPtr = contextPtr
+        self.volumePtr = volumePtr
+        self.volumeLock = volumeLock
+        self.converterLock = converterLock
+    }
+    
+    deinit {
+        if let conv = converter {
+            AudioConverterDispose(conv)
+        }
+        if let ctxPtr = contextPtr {
+            let ctx = ctxPtr.pointee
+            for i in 0..<ctx.ringBufferCount {
+                ctx.scratch[i].deallocate()
+            }
+            ctx.scratch.deallocate()
+            ctxPtr.deinitialize(count: 1)
+            ctxPtr.deallocate()
+        }
+        buffersPtr.deallocate()
+        volumePtr.deinitialize(count: 1)
+        volumePtr.deallocate()
+        volumeLock.deinitialize(count: 1)
+        volumeLock.deallocate()
+        if let cLock = converterLock {
+            cLock.deinitialize(count: 1)
+            cLock.deallocate()
+        }
+    }
 }
 
 @available(macOS 14.2, *)
@@ -19,13 +75,21 @@ public class AppAudioNode: @unchecked Sendable {
     private let sourceFormat: AudioStreamBasicDescription
     private let engineFormat: AVAudioFormat
     
-    private var converter: AudioConverterRef? = nil
-    private var renderContext: AppAudioRenderContext? = nil
+    private let volumePtr: UnsafeMutablePointer<Float>
+    private let volumeLock: UnsafeMutablePointer<os_unfair_lock_s>
+    private let lifetimeToken: AppAudioNodeLifetimeToken
     
-    private let volumeContainer = AppAudioVolumeContainer()
     public var volume: Float {
-        get { volumeContainer.volume }
-        set { volumeContainer.volume = newValue }
+        get {
+            os_unfair_lock_lock(volumeLock)
+            defer { os_unfair_lock_unlock(volumeLock) }
+            return volumePtr.pointee
+        }
+        set {
+            os_unfair_lock_lock(volumeLock)
+            defer { os_unfair_lock_unlock(volumeLock) }
+            volumePtr.pointee = newValue
+        }
     }
     
     public init?(ringBuffers: [RingBuffer], sourceFormat: AudioStreamBasicDescription, engineFormat: AVAudioFormat) {
@@ -35,6 +99,7 @@ public class AppAudioNode: @unchecked Sendable {
         
         // Initialize EQ node
         self.eqNode = AVAudioUnitEQ(numberOfBands: 10)
+        self.eqNode.bypass = false
         self.eqNode.bypass = false
         self.eqController = EQController(avAudioUnit: self.eqNode)
         self.eqController.setFlat()
@@ -57,56 +122,93 @@ public class AppAudioNode: @unchecked Sendable {
         
         let needsConverter = !sampleRateMatch || !channelMatch || !formatFlagsMatch
         
+        let bufferCount = ringBuffers.count
+        let buffersPtr = UnsafeMutablePointer<UnsafeMutableRawPointer>.allocate(capacity: bufferCount)
+        for i in 0..<bufferCount {
+            buffersPtr[i] = Unmanaged.passUnretained(ringBuffers[i]).toOpaque()
+        }
+        
+        let volumePtr = UnsafeMutablePointer<Float>.allocate(capacity: 1)
+        volumePtr.initialize(to: 1.0)
+        self.volumePtr = volumePtr
+        
+        let volumeLock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+        volumeLock.initialize(to: os_unfair_lock_s())
+        self.volumeLock = volumeLock
+        
+        var tempConverter: AudioConverterRef? = nil
+        var contextPtr: UnsafeMutablePointer<AppAudioConverterContext>? = nil
+        var converterLock: UnsafeMutablePointer<os_unfair_lock_s>? = nil
+        
         if needsConverter {
-            var tempConverter: AudioConverterRef? = nil
             let status = AudioConverterNew(&srcFormat, &dstFormat, &tempConverter)
             if status == noErr {
-                self.converter = tempConverter
                 let bytesPerFrame = Int(srcFormat.mBytesPerFrame)
                 let srcInterleaved = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0
-                // Interleaved: 1 ring buffer carries all channels. Non-interleaved: 1 channel per buffer.
                 let channelsPerBuffer = srcInterleaved ? Int(srcFormat.mChannelsPerFrame) : 1
-                self.renderContext = AppAudioRenderContext(ringBuffers: ringBuffers, bytesPerFrame: bytesPerFrame, channelsPerBuffer: channelsPerBuffer)
+                
+                let scratchCapacityFrames = 16384
+                let scratchPtr = UnsafeMutablePointer<UnsafeMutableRawPointer>.allocate(capacity: bufferCount)
+                for i in 0..<bufferCount {
+                    scratchPtr[i] = UnsafeMutableRawPointer.allocate(byteCount: scratchCapacityFrames * bytesPerFrame, alignment: 16)
+                }
+                
+                let cLock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+                cLock.initialize(to: os_unfair_lock_s())
+                converterLock = cLock
+                
+                contextPtr = UnsafeMutablePointer<AppAudioConverterContext>.allocate(capacity: 1)
+                os_unfair_lock_lock(cLock)
+                contextPtr?.initialize(to: AppAudioConverterContext(
+                    ringBuffers: buffersPtr,
+                    ringBufferCount: bufferCount,
+                    bytesPerFrame: bytesPerFrame,
+                    channelsPerBuffer: channelsPerBuffer,
+                    scratch: scratchPtr,
+                    scratchCapacityFrames: scratchCapacityFrames,
+                    lock: cLock
+                ))
+                os_unfair_lock_unlock(cLock)
+                
                 print("AppAudioNode: Initialized AudioConverter for format mismatch (SR: \(srcFormat.mSampleRate) -> \(dstFormat.mSampleRate), Ch: \(srcFormat.mChannelsPerFrame) -> \(dstFormat.mChannelsPerFrame), srcInterleaved=\(srcInterleaved), chPerBuf=\(channelsPerBuffer))")
             } else {
                 print("AppAudioNode: Failed to create AudioConverter: \(status)")
+                buffersPtr.deallocate()
+                volumePtr.deinitialize(count: 1)
+                volumePtr.deallocate()
+                volumeLock.deinitialize(count: 1)
+                volumeLock.deallocate()
                 return nil
             }
         }
         
-        // Capture local copies for the render block closure
-        let localConverter = self.converter
-        let localContext = self.renderContext
-        let localBuffers = self.ringBuffers
+        let lifetimeToken = AppAudioNodeLifetimeToken(
+            converter: tempConverter,
+            buffersPtr: buffersPtr,
+            contextPtr: contextPtr,
+            volumePtr: volumePtr,
+            volumeLock: volumeLock,
+            converterLock: converterLock
+        )
+        self.lifetimeToken = lifetimeToken
+        
+        let localConverter = tempConverter
         let bytesPerFrame = Int(dstFormat.mBytesPerFrame)
-        let localVolumeContainer = self.volumeContainer
+        let opaqueSpectrum = Unmanaged.passUnretained(self.spectrumTap).toOpaque()
 
-        let usesConverter = (self.converter != nil)
-
-        // Feed the spectrum analyzer from the rendered output (no graph tap needed).
         self.spectrumTap.sampleRate = Float(dstFormat.mSampleRate > 0 ? dstFormat.mSampleRate : 48000)
-        let localSpectrum = self.spectrumTap
 
-        // Setup Source Node
-        self.sourceNode = AVAudioSourceNode(format: engineFormat) { isSilence, timestamp, frameCount, ioData in
-            renderDbgCalls += 1
-            let shouldLog = (renderDbgCalls % 100 == 0)
-            if shouldLog {
-                var avail = Int.max
-                for rb in localBuffers { avail = min(avail, rb.bytesAvailableForRead) }
-                print("RENDER[play]: calls=\(renderDbgCalls) path=\(usesConverter ? "converter" : "direct") frameCount=\(frameCount) ringAvail=\(avail)B")
-            }
-            if let conv = localConverter, let ctx = localContext {
+        self.sourceNode = AVAudioSourceNode(format: engineFormat) { [lifetimeToken, bufferCount, buffersPtr, contextPtr, volumePtr, volumeLock, opaqueSpectrum, bytesPerFrame, localConverter, spectrumTap = self.spectrumTap] isSilence, timestamp, frameCount, ioData in
+            if let conv = localConverter, let ctxPtr = contextPtr {
                 var ioOutputDataPackets = frameCount
                 let status = AudioConverterFillComplexBuffer(
                     conv,
                     converterInputProc,
-                    Unmanaged.passUnretained(ctx).toOpaque(),
+                    ctxPtr,
                     &ioOutputDataPackets,
                     ioData,
                     nil
                 )
-                if shouldLog { print("RENDER[play]: converterStatus=\(status) outPackets=\(ioOutputDataPackets)") }
                 let buffers = UnsafeMutableAudioBufferListPointer(ioData)
                 if status != noErr {
                     // Fill output buffers with silence on error
@@ -126,23 +228,26 @@ public class AppAudioNode: @unchecked Sendable {
                     }
                 }
             } else {
-                // Direct read - pull from ring buffers
+                // Direct read - pull from ring buffers using unmanaged references (no ARC)
                 let buffers = UnsafeMutableAudioBufferListPointer(ioData)
                 let bytesToRead = Int(frameCount) * bytesPerFrame
                 
                 var minAvailable = Int.max
-                for rb in localBuffers {
-                    minAvailable = min(minAvailable, rb.bytesAvailableForRead)
+                for i in 0..<bufferCount {
+                    let available = Unmanaged<RingBuffer>.fromOpaque(buffersPtr[i])._withUnsafeGuaranteedRef { $0.bytesAvailableForRead }
+                    minAvailable = min(minAvailable, available)
                 }
                 
                 let actualBytesToRead = min(bytesToRead, minAvailable)
                 let actualFrames = actualBytesToRead / bytesPerFrame
                 
                 for (i, buffer) in buffers.enumerated() {
-                    if i < localBuffers.count {
+                    if i < bufferCount {
                         if let mData = buffer.mData {
                             if actualFrames > 0 {
-                                let bytesRead = localBuffers[i].read(mData, byteCount: actualFrames * bytesPerFrame)
+                                let bytesRead = Unmanaged<RingBuffer>.fromOpaque(buffersPtr[i])._withUnsafeGuaranteedRef { rb in
+                                    rb.read(mData, byteCount: actualFrames * bytesPerFrame)
+                                }
                                 if bytesRead < bytesToRead {
                                     let offset = bytesRead
                                     memset(mData.advanced(by: offset), 0, bytesToRead - offset)
@@ -155,22 +260,11 @@ public class AppAudioNode: @unchecked Sendable {
                 }
             }
 
-            let vol = localVolumeContainer.volume
-            if renderDbgCalls % 300 == 0 {
-                let buffers = UnsafeMutableAudioBufferListPointer(ioData)
-                var sumVal: Float = 0.0
-                if let firstBuf = buffers.first, let mData = firstBuf.mData {
-                    let ptr = mData.assumingMemoryBound(to: Float.self)
-                    let count = Int(frameCount)
-                    for i in 0..<count {
-                        sumVal += abs(ptr[i])
-                    }
-                }
-                print("RENDER[play]: vol=\(vol) sumSamples=\(sumVal)")
-            }
+            os_unfair_lock_lock(volumeLock)
+            let vol = volumePtr.pointee
+            os_unfair_lock_unlock(volumeLock)
             
-            // Apply gain whenever volume isn't unity — both attenuation (< 1.0) and
-            // amplification (> 1.0). A `< 1.0` guard here silently dropped all boost.
+            // Apply gain whenever volume isn't unity — both attenuation (< 1.0) and amplification (> 1.0).
             if vol != 1.0 {
                 let buffers = UnsafeMutableAudioBufferListPointer(ioData)
                 for buffer in buffers {
@@ -189,70 +283,42 @@ public class AppAudioNode: @unchecked Sendable {
             }
 
             // Push rendered output into the spectrum analyzer (UI-thread runs the FFT).
-            localSpectrum.capture(ioData, frameCount: Int(frameCount))
+            Unmanaged<SpectrumTap>.fromOpaque(opaqueSpectrum)._withUnsafeGuaranteedRef { $0.capture(ioData, frameCount: Int(frameCount)) }
 
+            _ = spectrumTap
+            _ = lifetimeToken
             return noErr
         }
-    }
-    
-    deinit {
-        if let conv = converter {
-            AudioConverterDispose(conv)
-        }
-    }
-}
-
-// Debug counter (racy, debug-only).
-private nonisolated(unsafe) var renderDbgCalls = 0
-
-// C-style helper context for AudioConverter.
-// Owns scratch storage the input proc points the converter at — an AudioConverter
-// input proc receives buffers with mData == NULL and is expected to SET mData to
-// point at the supplied input, not copy into pre-allocated storage.
-public final class AppAudioRenderContext: @unchecked Sendable {
-    public let ringBuffers: [RingBuffer]
-    public let bytesPerFrame: Int
-    public let channelsPerBuffer: Int   // 2 for interleaved stereo in 1 buffer; 1 for non-interleaved
-    let scratchCapacityFrames: Int
-    let scratch: [UnsafeMutableRawPointer]
-
-    public init(ringBuffers: [RingBuffer], bytesPerFrame: Int, channelsPerBuffer: Int) {
-        self.ringBuffers = ringBuffers
-        self.bytesPerFrame = bytesPerFrame
-        self.channelsPerBuffer = channelsPerBuffer
-        let capFrames = 16384  // generous; converter requests far fewer per call
-        self.scratchCapacityFrames = capFrames
-        self.scratch = ringBuffers.map { _ in
-            UnsafeMutableRawPointer.allocate(byteCount: capFrames * bytesPerFrame, alignment: 16)
-        }
-    }
-
-    deinit {
-        scratch.forEach { $0.deallocate() }
     }
 }
 
 // C-style input callback for AudioConverter
 private let converterInputProc: AudioConverterComplexInputDataProc = { _, ioNumberDataPackets, ioData, _, inUserData in
     guard let userData = inUserData else { return -1 }
-    let context = Unmanaged<AppAudioRenderContext>.fromOpaque(userData).takeUnretainedValue()
+    let contextPtr = userData.assumingMemoryBound(to: AppAudioConverterContext.self)
+    
+    os_unfair_lock_lock(contextPtr.pointee.lock)
+    let context = contextPtr.pointee
+    os_unfair_lock_unlock(contextPtr.pointee.lock)
 
     let bytesPerFrame = context.bytesPerFrame
     let requestedFrames = min(Int(ioNumberDataPackets.pointee), context.scratchCapacityFrames)
     let buffers = UnsafeMutableAudioBufferListPointer(ioData)
 
     var minAvailable = Int.max
-    for rb in context.ringBuffers {
-        minAvailable = min(minAvailable, rb.bytesAvailableForRead)
+    for i in 0..<context.ringBufferCount {
+        let rbPtr = context.ringBuffers[i]
+        let available = Unmanaged<RingBuffer>.fromOpaque(rbPtr)._withUnsafeGuaranteedRef { rb in
+            rb.bytesAvailableForRead
+        }
+        minAvailable = min(minAvailable, available)
     }
     let framesAvailable = minAvailable / bytesPerFrame
     let frames = min(requestedFrames, framesAvailable)
 
-    // No data yet — hand the converter a block of silence so it still emits output
-    // (returning 0 packets would leave the source node's buffer partially filled).
     if frames == 0 {
         for i in 0..<buffers.count {
-            let s = context.scratch[i < context.scratch.count ? i : 0]
+            let s = context.scratch[i < context.ringBufferCount ? i : 0]
             memset(s, 0, requestedFrames * bytesPerFrame)
             buffers[i].mData = s
             buffers[i].mDataByteSize = UInt32(requestedFrames * bytesPerFrame)
@@ -262,11 +328,13 @@ private let converterInputProc: AudioConverterComplexInputDataProc = { _, ioNumb
         return noErr
     }
 
-    // Read ring buffer data into our scratch, then point the converter's input at it.
     for i in 0..<buffers.count {
-        let s = context.scratch[i < context.scratch.count ? i : 0]
-        if i < context.ringBuffers.count {
-            let bytesRead = context.ringBuffers[i].read(s, byteCount: frames * bytesPerFrame)
+        let s = context.scratch[i < context.ringBufferCount ? i : 0]
+        if i < context.ringBufferCount {
+            let rbPtr = context.ringBuffers[i]
+            let bytesRead = Unmanaged<RingBuffer>.fromOpaque(rbPtr)._withUnsafeGuaranteedRef { rb in
+                rb.read(s, byteCount: frames * bytesPerFrame)
+            }
             buffers[i].mData = s
             buffers[i].mDataByteSize = UInt32(bytesRead)
         } else {

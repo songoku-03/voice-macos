@@ -1,9 +1,11 @@
 import Foundation
+import AppKit
 import AVFoundation
 import CoreAudio
 import AudioToolbox
 import Observation
 import Core
+import Darwin
 
 @available(macOS 14.2, *)
 private class OutputDeviceEngine {
@@ -66,6 +68,26 @@ private class OutputDeviceEngine {
 }
 
 @available(macOS 14.2, *)
+private let deviceListProc: AudioObjectPropertyListenerProc = { _, _, _, inClientData in
+    guard let data = inClientData else { return noErr }
+    let mgr = Unmanaged<AudioEngineManager>.fromOpaque(data).takeUnretainedValue()
+    Task { @MainActor in
+        mgr.handleDeviceListChanged()
+    }
+    return noErr
+}
+
+@available(macOS 14.2, *)
+private let defaultOutputProc: AudioObjectPropertyListenerProc = { _, _, _, inClientData in
+    guard let data = inClientData else { return noErr }
+    let mgr = Unmanaged<AudioEngineManager>.fromOpaque(data).takeUnretainedValue()
+    Task { @MainActor in
+        mgr.handleDefaultOutputChanged()
+    }
+    return noErr
+}
+
+@available(macOS 14.2, *)
 @Observable
 @MainActor
 public class AudioEngineManager: @unchecked Sendable {
@@ -82,6 +104,7 @@ public class AudioEngineManager: @unchecked Sendable {
                 followsSystemDefault = false  // user made an explicit choice
                 setSystemDefaultOutputDeviceID(selectedDeviceID)
             }
+            saveStateToUserDefaults()
             handleDefaultDeviceChanged(from: oldValue, to: selectedDeviceID)
         }
     }
@@ -91,22 +114,37 @@ public class AudioEngineManager: @unchecked Sendable {
         let bus: AVAudioNodeBus
     }
     
-    private var engines: [AudioDeviceID: OutputDeviceEngine] = [:]
+    @ObservationIgnored nonisolated(unsafe) private var engines: [AudioDeviceID: OutputDeviceEngine] = [:]
+    @ObservationIgnored nonisolated(unsafe) private var livenessTimer: Timer?
     private var appBusRoutes: [String: AppBusRoute] = [:] // Keyed by Bundle ID
     private var busVolumes: [String: Float] = [:]
     private var isMuted: [String: Bool] = [:]
     private var activePIDs: [String: pid_t] = [:]
-    private var followsSystemDefault = true  // false once user explicitly picks a device
+    private var desiredTappedBundleIDs: Set<String> = []
+    var followsSystemDefault: Bool {
+        get {
+            UserDefaults.standard.object(forKey: "followsSystemDefault") as? Bool ?? true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "followsSystemDefault")
+        }
+    }
     // When true, the selectedDeviceID setter won't reset followsSystemDefault.
     // Used by system-default-changed listener to update selectedDeviceID without
     // marking it as a user-explicit pick.
     private var _suppressFollowReset = false
+    private var _suppressSaveState = false
+    private var deviceIDsChangingConfig = Set<AudioDeviceID>()
     
     // Configured output routing: Bundle ID -> AudioDeviceID (kAudioObjectUnknown = Default)
     public private(set) var appOutputDevices: [String: AudioDeviceID] = [:]
     
     // Cached preset settings for bundle IDs that are not currently running
     private var cachedAppSettings: [String: EQPresetData] = [:]
+    
+    #if DEBUG
+    public var tapProvider: ((String, pid_t) -> ([RingBuffer], AudioStreamBasicDescription)?)? = nil
+    #endif
     
     private let systemObjectID = AudioObjectID(kAudioObjectSystemObject)
     private let selectorDefaultOutput = kAudioHardwarePropertyDefaultOutputDevice
@@ -117,19 +155,91 @@ public class AudioEngineManager: @unchecked Sendable {
         setupListeners()
     }
     
+    deinit {
+        let clientData = Unmanaged.passUnretained(self).toOpaque()
+        
+        var listAddress = AudioObjectPropertyAddress(
+            mSelector: selectorDevicesList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListener(systemObjectID, &listAddress, deviceListProc, clientData)
+        
+        var defaultAddress = AudioObjectPropertyAddress(
+            mSelector: selectorDefaultOutput,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListener(systemObjectID, &defaultAddress, defaultOutputProc, clientData)
+        
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        
+        livenessTimer?.invalidate()
+        livenessTimer = nil
+        
+        for devEngine in engines.values {
+            devEngine.engine.stop()
+        }
+        engines.removeAll()
+    }
+    
+    private func saveStateToUserDefaults() {
+        guard !_suppressSaveState else { return }
+        if let device = outputDevices.first(where: { $0.deviceID == selectedDeviceID }) {
+            UserDefaults.standard.set(device.uid, forKey: "selectedDeviceUID")
+        } else if selectedDeviceID == kAudioObjectUnknown {
+            UserDefaults.standard.removeObject(forKey: "selectedDeviceUID")
+        }
+    }
+    
     private func setupEngine() {
-        let defaultID = getDefaultOutputDeviceID()
-        _suppressFollowReset = true
-        selectedDeviceID = defaultID
-        _suppressFollowReset = false
-        followsSystemDefault = true
+        _suppressSaveState = true
+        defer {
+            _suppressSaveState = false
+        }
+        
         refreshDevices()
+        
+        let savedFollows = UserDefaults.standard.object(forKey: "followsSystemDefault") as? Bool ?? true
+        let savedUID = UserDefaults.standard.string(forKey: "selectedDeviceUID")
+        
+        let sysDefaultID = getDefaultOutputDeviceID()
+        
+        var targetID = sysDefaultID
+        var resolvedFollows = savedFollows
+        
+        if !savedFollows, let uid = savedUID {
+            if let device = outputDevices.first(where: { $0.uid == uid }) {
+                targetID = device.deviceID
+            } else {
+                targetID = sysDefaultID
+            }
+        } else {
+            resolvedFollows = true
+        }
+        
+        _suppressFollowReset = true
+        selectedDeviceID = targetID
+        _suppressFollowReset = false
+        followsSystemDefault = resolvedFollows
+        
         if selectedDeviceID != kAudioObjectUnknown {
             _ = getEngine(for: selectedDeviceID)
         }
         isRunning = true
-        print("AudioEngineManager: Initialized with multi-engine output support.")
+        print("AudioEngineManager: Initialized with multi-engine output support. followsSystemDefault=\(followsSystemDefault), selectedDeviceID=\(selectedDeviceID)")
         applyDefaultPreset()
+        
+        // Load desiredTappedBundleIDs and auto-resume tapping for running matches
+        let savedIDs = UserDefaults.standard.stringArray(forKey: "desiredTappedBundleIDs") ?? []
+        self.desiredTappedBundleIDs = Set(savedIDs)
+        for app in NSWorkspace.shared.runningApplications {
+            if let bundleID = app.bundleIdentifier, self.desiredTappedBundleIDs.contains(bundleID) {
+                let pid = app.processIdentifier
+                self.startAppTapping(bundleID: bundleID, pid: pid)
+            }
+        }
     }
     
     private func getEngine(for deviceID: AudioDeviceID) -> OutputDeviceEngine {
@@ -144,12 +254,26 @@ public class AudioEngineManager: @unchecked Sendable {
     
     public func startAppTapping(bundleID: String, pid: pid_t) {
         guard activeNodes[bundleID] == nil else { return }
+        desiredTappedBundleIDs.insert(bundleID)
+        UserDefaults.standard.set(Array(desiredTappedBundleIDs), forKey: "desiredTappedBundleIDs")
         activePIDs[bundleID] = pid
         print("AudioEngineManager: startAppTapping for \(bundleID) with PID \(pid)")
         
         // Start tapping in ProcessTapManager
-        guard let (ringBuffers, tapFormat) = ProcessTapManager.shared.startTapping(bundleID: bundleID, pid: pid) else {
+        let tapResult: ([RingBuffer], AudioStreamBasicDescription)?
+        #if DEBUG
+        if let provider = tapProvider {
+            tapResult = provider(bundleID, pid)
+        } else {
+            tapResult = ProcessTapManager.shared.startTapping(bundleID: bundleID, pid: pid)
+        }
+        #else
+        tapResult = ProcessTapManager.shared.startTapping(bundleID: bundleID, pid: pid)
+        #endif
+
+        guard let (ringBuffers, tapFormat) = tapResult else {
             print("AudioEngineManager: Failed to start process tap for \(bundleID)")
+            activePIDs.removeValue(forKey: bundleID)
             return
         }
         
@@ -161,12 +285,15 @@ public class AudioEngineManager: @unchecked Sendable {
         let resolvedRate = sampleRate > 0 ? sampleRate : 48000.0
         guard let engineFormat = AVAudioFormat(standardFormatWithSampleRate: resolvedRate, channels: 2) else {
             print("AudioEngineManager: Failed to create engine format for \(bundleID)")
+            ProcessTapManager.shared.stopTapping(bundleID: bundleID)
+            activePIDs.removeValue(forKey: bundleID)
             return
         }
         
         guard let appNode = AppAudioNode(ringBuffers: ringBuffers, sourceFormat: tapFormat, engineFormat: engineFormat) else {
             print("AudioEngineManager: Failed to create AppAudioNode for \(bundleID)")
             ProcessTapManager.shared.stopTapping(bundleID: bundleID)
+            activePIDs.removeValue(forKey: bundleID)
             return
         }
         
@@ -196,12 +323,24 @@ public class AudioEngineManager: @unchecked Sendable {
         appNode.volume = muted ? 0.0 : vol
         
         print("AudioEngineManager: Attached and connected \(bundleID) on engine device \(actualDeviceID) bus \(bus)")
+        
+        // Wire up ducking if currently breaking (6.3)
+        BreakTimerManager.shared.duckNewNode(bundleID: bundleID, manager: self)
+    }
+    
+    public func userStopAppTapping(bundleID: String) {
+        desiredTappedBundleIDs.remove(bundleID)
+        UserDefaults.standard.set(Array(desiredTappedBundleIDs), forKey: "desiredTappedBundleIDs")
+        stopAppTapping(bundleID: bundleID)
     }
     
     public func stopAppTapping(bundleID: String) {
         activePIDs.removeValue(forKey: bundleID)
         guard let appNode = activeNodes.removeValue(forKey: bundleID) else { return }
         guard let route = appBusRoutes.removeValue(forKey: bundleID) else { return }
+        
+        // Safety: Immediately set volume to 0.0 before disconnecting/detaching
+        appNode.volume = 0.0
         
         if let devEngine = engines[route.deviceID] {
             devEngine.engine.disconnectNodeInput(devEngine.engine.mainMixerNode, bus: route.bus)
@@ -215,6 +354,7 @@ public class AudioEngineManager: @unchecked Sendable {
 
         ProcessTapManager.shared.stopTapping(bundleID: bundleID)
         print("AudioEngineManager: Detached and stopped tapping \(bundleID) from engine device \(route.deviceID)")
+        cleanupIdleEngines()
     }
     
     // Per-app output routing setter
@@ -250,6 +390,7 @@ public class AudioEngineManager: @unchecked Sendable {
                 migrateActiveNode(bundleID: bundleID, fromDevice: oldDeviceID, toDevice: newDeviceID)
             }
         }
+        cleanupIdleEngines()
     }
     
     private func migrateActiveNode(bundleID: String, fromDevice: AudioDeviceID, toDevice: AudioDeviceID) {
@@ -265,7 +406,7 @@ public class AudioEngineManager: @unchecked Sendable {
         guard let oldRoute = appBusRoutes.removeValue(forKey: bundleID) else { return }
         
         // 1. Detach from old engine
-        let actualOldDeviceID = (fromDevice == kAudioObjectUnknown) ? selectedDeviceID : fromDevice
+        let actualOldDeviceID = oldRoute.deviceID
         if let oldEngine = engines[actualOldDeviceID] {
             oldEngine.engine.disconnectNodeInput(oldEngine.engine.mainMixerNode, bus: oldRoute.bus)
             oldEngine.engine.disconnectNodeInput(appNode.eqNode, bus: 0)
@@ -320,6 +461,7 @@ public class AudioEngineManager: @unchecked Sendable {
         newAppNode.volume = muted ? 0.0 : oldVol
         
         print("AudioEngineManager: Successfully routed \(bundleID) to device \(actualNewDeviceID) bus \(bus)")
+        cleanupIdleEngines()
     }
     
     // VU Meter Level Pull (Placeholder)
@@ -506,25 +648,6 @@ public class AudioEngineManager: @unchecked Sendable {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        let deviceListProc: AudioObjectPropertyListenerProc = { _, _, _, inClientData in
-            guard let data = inClientData else { return noErr }
-            let mgr = Unmanaged<AudioEngineManager>.fromOpaque(data).takeUnretainedValue()
-            Task { @MainActor in
-                let prevID = mgr.selectedDeviceID
-                mgr.refreshDevices()
-                // If current device was removed (unplugged), fall back to system default.
-                if !mgr.outputDevices.contains(where: { $0.deviceID == prevID }) {
-                    let fallback = mgr.getDefaultOutputDeviceID()
-                    if fallback != prevID {
-                        mgr._suppressFollowReset = true
-                        mgr.selectedDeviceID = fallback
-                        mgr._suppressFollowReset = false
-                        mgr.followsSystemDefault = true
-                    }
-                }
-            }
-            return noErr
-        }
         AudioObjectAddPropertyListener(systemObjectID, &listAddress, deviceListProc, clientData)
 
         // System default output changed: follow only if user hasn't made a manual pick.
@@ -533,25 +656,391 @@ public class AudioEngineManager: @unchecked Sendable {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        let defaultOutputProc: AudioObjectPropertyListenerProc = { _, _, _, inClientData in
-            guard let data = inClientData else { return noErr }
-            let mgr = Unmanaged<AudioEngineManager>.fromOpaque(data).takeUnretainedValue()
-            Task { @MainActor in
-                guard mgr.followsSystemDefault else {
-                    print("AudioEngineManager: System default changed but user has explicit pick — ignoring")
-                    return
-                }
-                let sysDefault = mgr.getDefaultOutputDeviceID()
-                if mgr.selectedDeviceID != sysDefault {
-                    print("AudioEngineManager: Following system default device change → \(sysDefault)")
-                    mgr._suppressFollowReset = true
-                    mgr.selectedDeviceID = sysDefault
-                    mgr._suppressFollowReset = false
-                    mgr.followsSystemDefault = true
+        AudioObjectAddPropertyListener(systemObjectID, &defaultAddress, defaultOutputProc, clientData)
+
+        // Register Sleep, Wake, and AVAudioEngine configuration changes
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(handleEngineConfigurationChange(_:)), name: .AVAudioEngineConfigurationChange, object: nil)
+
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(self, selector: #selector(handleSleep), name: NSWorkspace.willSleepNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleWake), name: NSWorkspace.didWakeNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleAppLaunched(_:)), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleAppTerminated(_:)), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+
+        // Schedule repeating liveness watchdog timer (every 5 seconds) if not running under XCTest
+        if NSClassFromString("XCTestCase") == nil {
+            livenessTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.checkPIDsLiveness()
                 }
             }
-            return noErr
         }
-        AudioObjectAddPropertyListener(systemObjectID, &defaultAddress, defaultOutputProc, clientData)
+    }
+
+    @MainActor
+    fileprivate func handleDeviceListChanged() {
+        let prevID = self.selectedDeviceID
+        self.refreshDevices()
+        // If current device was removed (unplugged), fall back to system default.
+        if !self.outputDevices.contains(where: { $0.deviceID == prevID }) {
+            let fallback = self.getDefaultOutputDeviceID()
+            if fallback != prevID {
+                self._suppressFollowReset = true
+                self.selectedDeviceID = fallback
+                self._suppressFollowReset = false
+                self.followsSystemDefault = true
+            }
+        }
+        
+        // Restore preferred device if it was missing and is now re-plugged
+        let savedFollows = UserDefaults.standard.object(forKey: "followsSystemDefault") as? Bool ?? true
+        let savedUID = UserDefaults.standard.string(forKey: "selectedDeviceUID")
+        if !savedFollows, let uid = savedUID,
+           let preferredDevice = self.outputDevices.first(where: { $0.uid == uid }) {
+            if self.selectedDeviceID != preferredDevice.deviceID {
+                print("AudioEngineManager: Restoring preferred device \(preferredDevice.name) (\(uid))")
+                self._suppressFollowReset = true
+                self._suppressSaveState = true
+                self.selectedDeviceID = preferredDevice.deviceID
+                self._suppressFollowReset = false
+                self._suppressSaveState = false
+            }
+        }
+        
+        self.cleanupUnpluggedEngines()
+    }
+
+    @MainActor
+    fileprivate func handleDefaultOutputChanged() {
+        guard self.followsSystemDefault else {
+            print("AudioEngineManager: System default changed but user has explicit pick — ignoring")
+            return
+        }
+        let sysDefault = self.getDefaultOutputDeviceID()
+        if self.selectedDeviceID != sysDefault {
+            print("AudioEngineManager: Following system default device change → \(sysDefault)")
+            self._suppressFollowReset = true
+            self.selectedDeviceID = sysDefault
+            self._suppressFollowReset = false
+            self.followsSystemDefault = true
+        }
+    }
+
+    @objc nonisolated private func handleSleep() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { [weak self] in
+                self?.performSleep()
+            }
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.performSleep()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func performSleep() {
+        print("AudioEngineManager: System going to sleep. Stopping engines...")
+        for devEngine in self.engines.values {
+            devEngine.engine.stop()
+        }
+        self.engines.removeAll()
+    }
+    
+    @objc nonisolated private func handleWake() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { [weak self] in
+                self?.performWake()
+            }
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.performWake()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func performWake() {
+        print("AudioEngineManager: System woke up. Restoring audio routing...")
+        self.refreshDevices()
+        
+        if self.followsSystemDefault {
+            let sysDefault = self.getDefaultOutputDeviceID()
+            if self.selectedDeviceID != sysDefault {
+                self._suppressFollowReset = true
+                self.selectedDeviceID = sysDefault
+                self._suppressFollowReset = false
+            }
+        }
+        
+        self.recreateAllAppNodes()
+    }
+    
+    private func recreateAllAppNodes() {
+        let runningApps = activePIDs
+        for bundleID in runningApps.keys {
+            stopAppTapping(bundleID: bundleID)
+        }
+        for (bundleID, pid) in runningApps {
+            startAppTapping(bundleID: bundleID, pid: pid)
+        }
+    }
+
+    @objc nonisolated private func handleAppLaunched(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let bundleID = app.bundleIdentifier else {
+            return
+        }
+        let pid = app.processIdentifier
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { [weak self] in
+                self?.performAppLaunched(bundleID: bundleID, pid: pid)
+            }
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.performAppLaunched(bundleID: bundleID, pid: pid)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func performAppLaunched(bundleID: String, pid: pid_t) {
+        if desiredTappedBundleIDs.contains(bundleID) {
+            print("AudioEngineManager: Launched application matches desired tapped ID: \(bundleID). Starting tap.")
+            startAppTapping(bundleID: bundleID, pid: pid)
+        }
+    }
+
+    @objc nonisolated private func handleAppTerminated(_ notification: Notification) {
+        let bundleID: String?
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
+            bundleID = app.bundleIdentifier
+        } else {
+            bundleID = notification.userInfo?["bundleIdentifier"] as? String
+        }
+
+        guard let bundleID = bundleID else { return }
+
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { [weak self] in
+                self?.performAppTerminated(bundleID: bundleID)
+            }
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.performAppTerminated(bundleID: bundleID)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func performAppTerminated(bundleID: String) {
+        if activeNodes[bundleID] != nil || activePIDs[bundleID] != nil {
+            print("AudioEngineManager: Terminated application detected: \(bundleID). Stopping tap.")
+            stopAppTapping(bundleID: bundleID)
+        }
+    }
+
+    @MainActor
+    private func checkPIDsLiveness() {
+        var toStop: [String] = []
+        for (bundleID, pid) in activePIDs {
+            if Darwin.kill(pid, 0) == -1 && Darwin.errno == ESRCH {
+                print("AudioEngineManager: Liveness check failed for \(bundleID) (PID: \(pid)). Stopping tap.")
+                toStop.append(bundleID)
+            }
+        }
+        for bundleID in toStop {
+            stopAppTapping(bundleID: bundleID)
+        }
+    }
+
+    @MainActor
+    func checkTappedProcessesLiveness() {
+        for (bundleID, pid) in activePIDs {
+            let killResult = Darwin.kill(pid, 0)
+            let isEsrch = (killResult == -1 && Darwin.errno == ESRCH)
+            
+            let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            let matchingApp = apps.first { $0.processIdentifier == pid }
+            let isTerminated = matchingApp?.isTerminated ?? false
+            let isNSRunningAppDead = !apps.isEmpty && (matchingApp == nil || isTerminated)
+            
+            if isEsrch || isNSRunningAppDead {
+                print("AudioEngineManager: Watchdog detected dead process for \(bundleID) (PID: \(pid)). Stopping tap.")
+                stopAppTapping(bundleID: bundleID)
+            }
+        }
+    }
+
+    @MainActor
+    internal func checkLiveness() {
+        checkTappedProcessesLiveness()
+    }
+
+    @MainActor
+    public func teardown() {
+        livenessTimer?.invalidate()
+        livenessTimer = nil
+        
+        let keys = Array(activeNodes.keys)
+        for bundleID in keys {
+            stopAppTapping(bundleID: bundleID)
+        }
+    }
+    
+    @objc nonisolated private func handleEngineConfigurationChange(_ notification: Notification) {
+        nonisolated(unsafe) let changedEngine = notification.object as? AVAudioEngine
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { [weak self] in
+                self?.performEngineConfigurationChange(changedEngine: changedEngine)
+            }
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.performEngineConfigurationChange(changedEngine: changedEngine)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func performEngineConfigurationChange(changedEngine: AVAudioEngine?) {
+        guard let changedEngine = changedEngine else { return }
+        guard let deviceID = self.engines.first(where: { $0.value.engine === changedEngine })?.key else { return }
+        
+        print("AudioEngineManager: Configuration change detected for engine on device \(deviceID)")
+        
+        self.deviceIDsChangingConfig.insert(deviceID)
+        defer {
+            self.deviceIDsChangingConfig.remove(deviceID)
+            self.cleanupIdleEngines()
+        }
+        
+        let appsOnThisDevice = self.appBusRoutes.filter { $0.value.deviceID == deviceID }.map { $0.key }
+        var pidsToRestart: [String: pid_t] = [:]
+        for bundleID in appsOnThisDevice {
+            if let pid = self.activePIDs[bundleID] {
+                pidsToRestart[bundleID] = pid
+            }
+            self.stopAppTapping(bundleID: bundleID)
+        }
+        
+        if let devEngine = self.engines[deviceID] {
+            devEngine.engine.stop()
+            devEngine.nextBus = 0
+            devEngine.freeBuses = []
+            
+            if devEngine.deviceID != kAudioObjectUnknown, let outputUnit = devEngine.engine.outputNode.audioUnit {
+                var devID = devEngine.deviceID
+                AudioUnitSetProperty(
+                    outputUnit,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global,
+                    0,
+                    &devID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)
+                )
+            }
+            
+            do {
+                try devEngine.engine.start()
+                print("AudioEngineManager: Restarted engine for device \(deviceID) after config change")
+            } catch {
+                print("AudioEngineManager: Failed to restart engine for device \(deviceID): \(error)")
+            }
+        }
+        
+        for (bundleID, pid) in pidsToRestart {
+            self.startAppTapping(bundleID: bundleID, pid: pid)
+        }
+    }
+    
+    private func cleanupUnpluggedEngines() {
+        let validIDs = Set(outputDevices.map { $0.deviceID })
+        let enginesToClean = engines.keys.filter { !validIDs.contains($0) && $0 != kAudioObjectUnknown }
+        
+        for devID in enginesToClean {
+            print("AudioEngineManager: Cleaning up unplugged engine for device \(devID)")
+            if let devEngine = engines.removeValue(forKey: devID) {
+                devEngine.engine.stop()
+            }
+            let appsOnThisDevice = appBusRoutes.filter { $0.value.deviceID == devID }.map { $0.key }
+            for bundleID in appsOnThisDevice {
+                setAppOutputDevice(bundleID: bundleID, deviceID: kAudioObjectUnknown)
+            }
+        }
+        
+        // Scan appOutputDevices for unplugged devices (both active and inactive apps)
+        for (bundleID, devID) in appOutputDevices {
+            if devID != kAudioObjectUnknown && !validIDs.contains(devID) {
+                print("AudioEngineManager: Resetting output device for \(bundleID) because device \(devID) was unplugged")
+                appOutputDevices[bundleID] = kAudioObjectUnknown
+            }
+        }
+    }
+    
+    private func cleanupIdleEngines() {
+        let activeDeviceIDs = Set(appBusRoutes.values.map { $0.deviceID })
+        let idleEngines = engines.keys.filter { devID in
+            devID != selectedDeviceID && !activeDeviceIDs.contains(devID) && !deviceIDsChangingConfig.contains(devID)
+        }
+        
+        for devID in idleEngines {
+            print("AudioEngineManager: Cleaning up idle engine for device \(devID)")
+            if let devEngine = engines.removeValue(forKey: devID) {
+                devEngine.engine.stop()
+            }
+        }
     }
 }
+
+#if DEBUG
+@available(macOS 14.2, *)
+extension AudioEngineManager {
+    public func testExposeCleanupUnpluggedEngines() {
+        self.cleanupUnpluggedEngines()
+    }
+    
+    public func testExposeCleanupIdleEngines() {
+        self.cleanupIdleEngines()
+    }
+    
+    public func testExposeDeviceIDsChangingConfig() -> Set<AudioDeviceID> {
+        return self.deviceIDsChangingConfig
+    }
+    
+    public func testExposeGetEngine(for deviceID: AudioDeviceID) -> AVAudioEngine {
+        return self.getEngine(for: deviceID).engine
+    }
+    
+    public func testExposeEnginesCount() -> Int {
+        return self.engines.count
+    }
+    
+    public func testExposeSetDeviceChangingConfig(_ deviceID: AudioDeviceID, isChanging: Bool) {
+        if isChanging {
+            self.deviceIDsChangingConfig.insert(deviceID)
+        } else {
+            self.deviceIDsChangingConfig.remove(deviceID)
+        }
+    }
+    
+    public func testExposeCheckLiveness() {
+        self.checkLiveness()
+    }
+    
+    public func testExposeCheckPIDsLiveness() {
+        self.checkPIDsLiveness()
+    }
+}
+#endif

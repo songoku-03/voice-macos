@@ -17,7 +17,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Redirect stdout and stderr to a file for persistent logging
-        let logPath = "/Users/mac/Documents/GitHub/soundssource/app.log"
+        let logPath = "/Users/mac/Documents/GitHub/voice-macos/app.log"
         freopen(logPath, "a", stdout)
         freopen(logPath, "a", stderr)
         setbuf(stdout, nil)
@@ -86,6 +86,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     // 7.2: Graceful teardown — ensures tap removed, overlay hidden, audio restored
     public func applicationWillTerminate(_ notification: Notification) {
+        let keys = Array(AudioEngineManager.shared.activeNodes.keys)
+        for bundleID in keys {
+            AudioEngineManager.shared.stopAppTapping(bundleID: bundleID)
+        }
+        AudioEngineManager.shared.teardown()
         breakTimerManager?.teardownOnTerminate()
     }
 }

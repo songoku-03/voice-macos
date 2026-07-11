@@ -9,6 +9,7 @@ public struct AppRowView: View {
     @State private var isExpanded = false
     @State private var engineManager = AudioEngineManager.shared
     @State private var isHovered = false
+    @State private var isToggling = false
 
     private var isTapped: Bool {
         engineManager.activeNodes[process.bundleID] != nil
@@ -70,12 +71,19 @@ public struct AppRowView: View {
                             .fill(isTapped ? DS.accent.opacity(0.16) : Color.clear)
                             .frame(width: 24, height: 24)
                         
-                        Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(isTapped ? DS.accent : DS.textTertiary)
+                        if isToggling {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(0.6)
+                        } else {
+                            Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
+                                .font(.system(size: 19, weight: .bold))
+                                .foregroundStyle(isTapped ? DS.accent : DS.textTertiary)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
+                .disabled(isToggling)
                 .help(isTapped ? "Stop capturing this app" : "Capture this app's audio")
 
                 // Expand chevron
@@ -127,15 +135,22 @@ public struct AppRowView: View {
     }
 
     private func toggleTap() {
-        if isTapped {
-            isExpanded = false
-            engineManager.stopAppTapping(bundleID: process.bundleID)
-        } else {
-            engineManager.startAppTapping(bundleID: process.bundleID, pid: process.pid)
-            // Auto expand when tapped
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                isExpanded = true
+        guard !isToggling else { return }
+        isToggling = true
+        
+        Task {
+            if isTapped {
+                isExpanded = false
+                engineManager.userStopAppTapping(bundleID: process.bundleID)
+            } else {
+                engineManager.startAppTapping(bundleID: process.bundleID, pid: process.pid)
+                // Auto expand when tapped
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    isExpanded = true
+                }
             }
+            try? await Task.sleep(for: .milliseconds(200))
+            isToggling = false
         }
     }
 }

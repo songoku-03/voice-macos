@@ -12,6 +12,26 @@ private enum AggDevKey {
 }
 
 @available(macOS 14.2, *)
+public final class TapIOContext: @unchecked Sendable {
+    public let ringBuffers: [RingBuffer]
+    public let buffersPtr: UnsafeMutablePointer<UnsafeMutableRawPointer>
+    public let bufferCount: Int
+
+    public init(ringBuffers: [RingBuffer]) {
+        self.ringBuffers = ringBuffers
+        self.bufferCount = ringBuffers.count
+        self.buffersPtr = UnsafeMutablePointer<UnsafeMutableRawPointer>.allocate(capacity: ringBuffers.count)
+        for i in 0..<ringBuffers.count {
+            self.buffersPtr[i] = Unmanaged.passUnretained(ringBuffers[i]).toOpaque()
+        }
+    }
+
+    deinit {
+        buffersPtr.deallocate()
+    }
+}
+
+@available(macOS 14.2, *)
 public class ProcessTapManager: @unchecked Sendable {
     public static let shared = ProcessTapManager()
 
@@ -21,10 +41,10 @@ public class ProcessTapManager: @unchecked Sendable {
         let ioProcID: AudioDeviceIOProcID
         let ringBuffers: [RingBuffer]
         let format: AudioStreamBasicDescription
+        let ioContext: TapIOContext  // Keeps the unmanaged context alive for the real-time thread!
     }
 
     private var activeTaps: [String: ActiveTap] = [:]
-    private var activeTapsByDevice: [AudioObjectID: ActiveTap] = [:] // keyed by aggDevID
     private let lock = NSLock()
 
     private init() {}
@@ -95,28 +115,11 @@ public class ProcessTapManager: @unchecked Sendable {
         return matches
     }
 
-    public func startSystemGlobalTap() -> ([RingBuffer], AudioStreamBasicDescription)? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let key = "system_global"
-        if let active = activeTaps[key] {
-            return (active.ringBuffers, active.format)
-        }
-
-        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        description.name = "SoundsSource System Global Tap"
-        description.muteBehavior = CATapMuteBehavior.muted
-
-        return createAndStartTap(key: key, description: description)
-    }
-
     public func stopTapping(bundleID: String) {
         lock.lock()
         defer { lock.unlock() }
 
         guard let active = activeTaps.removeValue(forKey: bundleID) else { return }
-        activeTapsByDevice.removeValue(forKey: active.aggDevID)
 
         // Teardown order is critical: aggDevID holds a reference to tapID.
         // Destroying tap before aggregate causes a dangling HAL reference.
@@ -143,11 +146,21 @@ public class ProcessTapManager: @unchecked Sendable {
         return activeTaps[bundleID]?.format
     }
 
-    fileprivate func getActiveTapInfo(for deviceID: AudioObjectID) -> ([RingBuffer], AudioStreamBasicDescription)? {
+    public func startSystemGlobalTap() -> ([RingBuffer], AudioStreamBasicDescription)? {
+        print("ProcessTapManager: startSystemGlobalTap")
         lock.lock()
         defer { lock.unlock() }
-        guard let active = activeTapsByDevice[deviceID] else { return nil }
-        return (active.ringBuffers, active.format)
+
+        let key = "system_global"
+        if let active = activeTaps[key] {
+            return (active.ringBuffers, active.format)
+        }
+
+        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        description.name = "SoundsSource System Global Tap"
+        description.muteBehavior = CATapMuteBehavior.muted
+
+        return createAndStartTap(key: key, description: description)
     }
 
     private func createAndStartTap(key: String, description: CATapDescription) -> ([RingBuffer], AudioStreamBasicDescription)? {
@@ -160,7 +173,6 @@ public class ProcessTapManager: @unchecked Sendable {
         }
 
         // Step 2: Get the tap's UID so we can reference it in the aggregate device.
-        // kAudioTapPropertyUID ('tuid') is tap-specific — kAudioObjectPropertyUID ('uid ') doesn't work on taps.
         guard let tapUID = getTapUID(tapID) else {
             print("ProcessTapManager: Failed to get tap UID — cannot build aggregate device")
             AudioHardwareDestroyProcessTap(tapID)
@@ -168,8 +180,6 @@ public class ProcessTapManager: @unchecked Sendable {
         }
 
         // Step 3: Wrap the tap in a private aggregate device.
-        // AudioDeviceCreateIOProcID requires an AudioDevice, but a process tap
-        // AudioObject is not a device. The aggregate device bridges the gap.
         guard let aggDevID = createAggregateDevice(tapUID: tapUID, key: key) else {
             AudioHardwareDestroyProcessTap(tapID)
             return nil
@@ -198,13 +208,14 @@ public class ProcessTapManager: @unchecked Sendable {
 
         var ringBuffers: [RingBuffer] = []
         for _ in 0..<ringBufferCount {
-            // 256 KB ≈ 680ms at 48kHz stereo float per channel
             ringBuffers.append(RingBuffer(capacity: 256 * 1024))
         }
 
-        let clientData = Unmanaged.passUnretained(self).toOpaque()
+        // Create the TapIOContext which holds the ringBuffers and raw pointer array for real-time safety
+        let ioContext = TapIOContext(ringBuffers: ringBuffers)
+        let clientData = Unmanaged.passUnretained(ioContext).toOpaque()
 
-        // Step 5: Register IOProc on aggDevID, not tapID.
+        // Step 5: Register IOProc on aggDevID, passing ioContext as clientData.
         var ioProcID: AudioDeviceIOProcID? = nil
         let ioProcStatus = AudioDeviceCreateIOProcID(aggDevID, tapIOProc, clientData, &ioProcID)
         guard ioProcStatus == noErr, let procID = ioProcID else {
@@ -229,18 +240,16 @@ public class ProcessTapManager: @unchecked Sendable {
             aggDevID: aggDevID,
             ioProcID: procID,
             ringBuffers: ringBuffers,
-            format: format
+            format: format,
+            ioContext: ioContext
         )
         activeTaps[key] = active
-        activeTapsByDevice[aggDevID] = active  // IOProc callback receives aggDevID as inDevice
         print("ProcessTapManager: Started tap for '\(key)' — \(format.mSampleRate)Hz \(format.mChannelsPerFrame)ch (\(isNonInterleaved ? "non-interleaved" : "interleaved"))")
 
         return (ringBuffers, format)
     }
 
     private func getTapUID(_ tapObjectID: AudioObjectID) -> String? {
-        // kAudioTapPropertyUID = 'tuid' = 0x74756964
-        // NOT kAudioObjectPropertyUID ('uid ') — process tap objects use a tap-specific selector
         var address = AudioObjectPropertyAddress(
             mSelector: 0x74756964,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -249,17 +258,13 @@ public class ProcessTapManager: @unchecked Sendable {
         var uidCF: Unmanaged<CFString>? = nil
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         let status = AudioObjectGetPropertyData(tapObjectID, &address, 0, nil, &size, &uidCF)
-        guard status == noErr, let cf = uidCF else {
-            print("ProcessTapManager: kAudioTapPropertyUID query failed — status \(status)")
-            return nil
-        }
+        guard status == noErr, let cf = uidCF else { return nil }
         return cf.takeRetainedValue() as String
     }
 
     private func getTapFormat(_ tapObjectID: AudioObjectID) -> AudioStreamBasicDescription? {
-        // kAudioTapPropertyFormat = 'tfmt' = 0x74666d74 — format directly from tap object
         var address = AudioObjectPropertyAddress(
-            mSelector: 0x74666d74,
+            mSelector: 0x74666d74, // 'tfmt'
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
@@ -270,18 +275,54 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 
     private func createAggregateDevice(tapUID: String, key: String) -> AudioObjectID? {
-        // Use raw string literals for keys to avoid SDK version / Swift 6 import issues.
-        let tapEntry: [String: Any] = [AggDevKey.subUID: tapUID]
-        let aggDesc: [String: Any] = [
-            AggDevKey.name:     "SoundsSource-Agg-\(key)",
-            AggDevKey.uid:      UUID().uuidString,
-            AggDevKey.private_: true,
-            AggDevKey.tapList:  [tapEntry]
+        var pluginAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyPlugInForBundleID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var pluginID = kAudioObjectUnknown
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let bundleID = "com.apple.audio.CoreAudio" as CFString
+        var status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &pluginAddress,
+            UInt32(MemoryLayout<CFString>.size),
+            Unmanaged.passUnretained(bundleID).toOpaque(),
+            &size,
+            &pluginID
+        )
+        guard status == noErr && pluginID != kAudioObjectUnknown else { return nil }
+
+        let subDeviceEntry: [String: Any] = [
+            AggDevKey.subUID: tapUID
+        ]
+        let aggName = "SoundsSourceAggDev_\(key)"
+        let aggUID = "SoundsSourceAggDevUID_\(key)"
+        let description: [String: Any] = [
+            AggDevKey.name: aggName,
+            AggDevKey.uid: aggUID,
+            AggDevKey.private_: 1,
+            AggDevKey.tapList: [subDeviceEntry]
         ]
 
-        var aggDevID: AudioObjectID = kAudioObjectUnknown
-        let status = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &aggDevID)
-        guard status == noErr && aggDevID != kAudioObjectUnknown else {
+        var aggDevID = kAudioObjectUnknown
+        var aggAddress = AudioObjectPropertyAddress(
+            mSelector: 0x63616764, // 'cagd' — kAudioPlugInCreateAggregateDevice
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let dictRef = description as CFDictionary
+        status = AudioObjectGetPropertyData(
+            pluginID,
+            &aggAddress,
+            UInt32(MemoryLayout<CFDictionary>.size),
+            Unmanaged.passUnretained(dictRef).toOpaque(),
+            &size,
+            &aggDevID
+        )
+
+        if status != noErr {
             print("ProcessTapManager: Failed to create aggregate device: \(status)")
             return nil
         }
@@ -289,12 +330,11 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 
     private func getStreamFormat(deviceID: AudioObjectID) -> AudioStreamBasicDescription? {
-        var format = AudioStreamBasicDescription()
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-
-        let scopes: [AudioObjectPropertyScope] = [
-            kAudioObjectPropertyScopeOutput,
-            kAudioObjectPropertyScopeInput,
+        var format = AudioStreamBasicDescription()
+        let scopes = [
+            kAudioDevicePropertyScopeInput,
+            kAudioDevicePropertyScopeOutput,
             kAudioObjectPropertyScopeGlobal
         ]
 
@@ -316,7 +356,7 @@ public class ProcessTapManager: @unchecked Sendable {
 
     private func getProcessObjectID(pid: pid_t) -> AudioObjectID? {
         var address = AudioObjectPropertyAddress(
-            mSelector: 0x69643270, // 'id2p' — kAudioHardwarePropertyTranslatePIDToProcessObject
+            mSelector: 0x69643270, // 'id2p'
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
@@ -338,18 +378,14 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 }
 
-// Debug counters (racy, debug-only — fine for diagnostics).
-private nonisolated(unsafe) var tapDbgCalls = 0
-private nonisolated(unsafe) var tapDbgBytes = 0
-
-// C-style IOProc callback — runs on real-time audio thread, must be allocation-free.
-// inDevice will be aggDevID (not tapID) after the aggregate device fix.
+// C-style IOProc callback — runs on real-time audio thread, must be allocation-free and lock-free.
 @available(macOS 14.2, *)
 private let tapIOProc: AudioDeviceIOProc = { inDevice, _, inInputData, _, _, _, inClientData in
     guard let clientData = inClientData else { return noErr }
-    let tapManager = Unmanaged<ProcessTapManager>.fromOpaque(clientData).takeUnretainedValue()
+    let context = Unmanaged<TapIOContext>.fromOpaque(clientData).takeUnretainedValue()
 
-    guard let (ringBuffers, _) = tapManager.getActiveTapInfo(for: inDevice) else { return noErr }
+    let ringBuffersPtr = context.buffersPtr
+    let ringBuffersCount = context.bufferCount
 
     let numberBuffers = inInputData.pointee.mNumberBuffers
     let mBuffersOffset = MemoryLayout<AudioBufferList>.offset(of: \AudioBufferList.mBuffers)!
@@ -358,26 +394,11 @@ private let tapIOProc: AudioDeviceIOProc = { inDevice, _, inInputData, _, _, _, 
         .assumingMemoryBound(to: AudioBuffer.self)
 
     let buffers = UnsafeBufferPointer(start: firstBufferPtr, count: Int(numberBuffers))
-    var wrote = 0
-    var sumVal: Float = 0.0
-    for (i, buffer) in buffers.enumerated() {
-        if i < ringBuffers.count, let mData = buffer.mData, buffer.mDataByteSize > 0 {
-            ringBuffers[i].writeOverwriting(mData, byteCount: Int(buffer.mDataByteSize))
-            wrote += Int(buffer.mDataByteSize)
-            
-            // Calculate sum of samples for debugging
-            let floatCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
-            let ptr = mData.assumingMemoryBound(to: Float.self)
-            for j in 0..<min(floatCount, 512) {
-                sumVal += abs(ptr[j])
-            }
+    for i in 0..<Int(numberBuffers) {
+        if i < ringBuffersCount, let mData = buffers[i].mData, buffers[i].mDataByteSize > 0 {
+            let rb = Unmanaged<RingBuffer>.fromOpaque(ringBuffersPtr[i]).takeUnretainedValue()
+            rb.writeOverwriting(mData, byteCount: Int(buffers[i].mDataByteSize))
         }
-    }
-
-    tapDbgCalls += 1
-    tapDbgBytes += wrote
-    if tapDbgCalls % 100 == 0 {
-        print("TAP[capture]: calls=\(tapDbgCalls) lastWrote=\(wrote)B numBuffers=\(numberBuffers) ringAvail=\(ringBuffers.first?.bytesAvailableForRead ?? -1)B sumSamples=\(sumVal)")
     }
 
     return noErr
