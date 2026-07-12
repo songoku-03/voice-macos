@@ -3,6 +3,15 @@ import AppKit
 import CoreAudio
 import Observation
 
+private let processListChangedProc: AudioObjectPropertyListenerProc = { inObjectID, inNumberAddresses, inAddresses, inClientData in
+    guard let clientData = inClientData else { return noErr }
+    let enumerator = Unmanaged<AudioProcessEnumerator>.fromOpaque(clientData).takeUnretainedValue()
+    Task { @MainActor [weak enumerator] in
+        enumerator?.refresh()
+    }
+    return noErr
+}
+
 @Observable
 @MainActor
 public class AudioProcessEnumerator: @unchecked Sendable {
@@ -39,8 +48,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            let listenerProc: AudioObjectPropertyListenerProc = { _, _, _, _ in noErr }
-            AudioObjectRemovePropertyListener(systemId, &address, listenerProc, ptr)
+            AudioObjectRemovePropertyListener(systemId, &address, processListChangedProc, ptr)
         }
     }
     
@@ -68,7 +76,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
         
         let currentBundleID = Bundle.main.bundleIdentifier
         var coreAudioProcesses: [String: AudioProcess] = [:]
-
+ 
         for processID in processIDs {
             // Get PID
             var pidAddress = AudioObjectPropertyAddress(
@@ -118,7 +126,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             var name = ""
             var icon: NSImage? = nil
             var isRegularApp = false
-
+ 
             if let runningApp = NSRunningApplication(processIdentifier: pid),
                runningApp.activationPolicy == .regular {
                 name = runningApp.localizedName ?? ""
@@ -129,7 +137,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 icon = owner.icon
                 isRegularApp = true
             }
-
+ 
             if name.isEmpty {
                 // Fallback to bundle ID or process name
                 if !bundleID.isEmpty {
@@ -138,7 +146,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                     name = "Process \(pid)"
                 }
             }
-
+ 
             let process = AudioProcess(
                 audioObjectID: processID,
                 pid: pid,
@@ -152,7 +160,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             let key = bundleID.isEmpty ? name : bundleID
             coreAudioProcesses[key] = process
         }
-
+ 
         // Merge with all running applications via NSWorkspace
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular else { continue }
@@ -190,7 +198,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 coreAudioProcesses[key] = process
             }
         }
-
+ 
         self.processes = Array(coreAudioProcesses.values)
     }
     
@@ -210,7 +218,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             current = parent
             depth += 1
         }
-
+ 
         // Chrome helpers have bundle IDs like "com.google.Chrome.helper.renderer".
         // Strip trailing components one by one until we match a running .regular app.
         if !bundleID.isEmpty {
@@ -223,10 +231,10 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 }
             }
         }
-
+ 
         return nil
     }
-
+ 
     // Parent PID via sysctl(KERN_PROC_PID).
     private func parentPID(of pid: pid_t) -> pid_t? {
         var info = kinfo_proc()
@@ -236,7 +244,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
         guard result == 0, size > 0 else { return nil }
         return info.kp_eproc.e_ppid
     }
-
+ 
     private func setupNotifications() {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] _ in
@@ -261,16 +269,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
         )
         
         let clientData = Unmanaged.passUnretained(self).toOpaque()
-        let listenerProc: AudioObjectPropertyListenerProc = { inObjectID, inNumberAddresses, inAddresses, inClientData in
-            guard let clientData = inClientData else { return noErr }
-            let enumerator = Unmanaged<AudioProcessEnumerator>.fromOpaque(clientData).takeUnretainedValue()
-            Task { @MainActor in
-                enumerator.refresh()
-            }
-            return noErr
-        }
-        
-        let status = AudioObjectAddPropertyListener(systemObjectID, &address, listenerProc, clientData)
+        let status = AudioObjectAddPropertyListener(systemObjectID, &address, processListChangedProc, clientData)
         if status == noErr {
             isListening = true
             listenerPointer = clientData

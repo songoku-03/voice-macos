@@ -4,31 +4,32 @@ import os
 public final class RingBuffer: @unchecked Sendable {
     private let capacity: Int
     private let buffer: UnsafeMutablePointer<UInt8>
-    private let lock: UnsafeMutablePointer<os_unfair_lock_s>
-    
-    private var writeOffset: Int = 0
-    private var readOffset: Int = 0
+    private let readOffsetPtr: UnsafeMutablePointer<Int32>
+    private let writeOffsetPtr: UnsafeMutablePointer<Int32>
     
     public init(capacity: Int) {
         self.capacity = capacity
         self.buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
         self.buffer.initialize(repeating: 0, count: capacity)
         
-        self.lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
-        self.lock.initialize(to: os_unfair_lock_s())
+        self.readOffsetPtr = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
+        self.readOffsetPtr.initialize(to: 0)
+        
+        self.writeOffsetPtr = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
+        self.writeOffsetPtr.initialize(to: 0)
     }
     
     deinit {
         buffer.deallocate()
-        lock.deinitialize(count: 1)
-        lock.deallocate()
+        readOffsetPtr.deinitialize(count: 1)
+        readOffsetPtr.deallocate()
+        writeOffsetPtr.deinitialize(count: 1)
+        writeOffsetPtr.deallocate()
     }
     
     public var bytesAvailableForRead: Int {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        let w = writeOffset
-        let r = readOffset
+        let w = Int(OSAtomicAdd32Barrier(0, writeOffsetPtr))
+        let r = Int(OSAtomicAdd32Barrier(0, readOffsetPtr))
         if w >= r {
             return w - r
         } else {
@@ -37,105 +38,126 @@ public final class RingBuffer: @unchecked Sendable {
     }
     
     public var bytesAvailableForWrite: Int {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        let w = writeOffset
-        let r = readOffset
+        let w = Int(OSAtomicAdd32Barrier(0, writeOffsetPtr))
+        let r = Int(OSAtomicAdd32Barrier(0, readOffsetPtr))
         let used = w >= r ? (w - r) : (capacity - r + w)
         return capacity - 1 - used
     }
     
     @discardableResult
     public func write(_ data: UnsafeRawPointer, byteCount: Int) -> Int {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        
-        let w = writeOffset
-        let r = readOffset
-        
-        let available = capacity - 1 - (w >= r ? (w - r) : (capacity - r + w))
-        guard available >= byteCount else {
-            return 0 // Buffer full / not enough space
-        }
-        
         let rawBuffer = UnsafeMutableRawPointer(buffer)
-        let firstPart = min(byteCount, capacity - w)
-        rawBuffer.advanced(by: w).copyMemory(from: data, byteCount: firstPart)
-        
-        if firstPart < byteCount {
-            let secondPart = byteCount - firstPart
-            rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
+        while true {
+            let w = OSAtomicAdd32Barrier(0, writeOffsetPtr)
+            let r = OSAtomicAdd32Barrier(0, readOffsetPtr)
+            
+            let wInt = Int(w)
+            let rInt = Int(r)
+            
+            let used = wInt >= rInt ? (wInt - rInt) : (capacity - rInt + wInt)
+            let available = capacity - 1 - used
+            guard available >= byteCount else {
+                return 0 // Buffer full / not enough space
+            }
+            
+            let firstPart = min(byteCount, capacity - wInt)
+            rawBuffer.advanced(by: wInt).copyMemory(from: data, byteCount: firstPart)
+            
+            if firstPart < byteCount {
+                let secondPart = byteCount - firstPart
+                rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
+            }
+            
+            let nextW = Int32((wInt + byteCount) % capacity)
+            if OSAtomicCompareAndSwap32Barrier(w, nextW, writeOffsetPtr) {
+                return byteCount
+            }
         }
-        
-        writeOffset = (w + byteCount) % capacity
-        return byteCount
     }
     
     /// Write data into the ring buffer, overwriting oldest unread data when full.
     @discardableResult
     public func writeOverwriting(_ data: UnsafeRawPointer, byteCount: Int) -> Int {
         guard byteCount > 0 && byteCount < capacity else { return 0 }
-        
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        
-        let w = writeOffset
-        let r = readOffset
-        let used = w >= r ? (w - r) : (capacity - r + w)
-        let available = capacity - 1 - used
-        
-        var newR = r
-        if available < byteCount {
-            let deficit = byteCount - available
-            newR = (r + deficit) % capacity
-        }
-        
-        // Now write the data
         let rawBuffer = UnsafeMutableRawPointer(buffer)
-        let firstPart = min(byteCount, capacity - w)
-        rawBuffer.advanced(by: w).copyMemory(from: data, byteCount: firstPart)
         
-        if firstPart < byteCount {
-            let secondPart = byteCount - firstPart
-            rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
+        while true {
+            let w = OSAtomicAdd32Barrier(0, writeOffsetPtr)
+            let r = OSAtomicAdd32Barrier(0, readOffsetPtr)
+            
+            let wInt = Int(w)
+            let rInt = Int(r)
+            let used = wInt >= rInt ? (wInt - rInt) : (capacity - rInt + wInt)
+            let available = capacity - 1 - used
+            
+            var newR = r
+            if available < byteCount {
+                let deficit = byteCount - available
+                newR = Int32((rInt + deficit) % capacity)
+                if !OSAtomicCompareAndSwap32Barrier(r, newR, readOffsetPtr) {
+                    continue
+                }
+            }
+            
+            // Now write the data
+            let firstPart = min(byteCount, capacity - wInt)
+            rawBuffer.advanced(by: wInt).copyMemory(from: data, byteCount: firstPart)
+            
+            if firstPart < byteCount {
+                let secondPart = byteCount - firstPart
+                rawBuffer.copyMemory(from: data.advanced(by: firstPart), byteCount: secondPart)
+            }
+            
+            let nextW = Int32((wInt + byteCount) % capacity)
+            if OSAtomicCompareAndSwap32Barrier(w, nextW, writeOffsetPtr) {
+                return byteCount
+            }
         }
-        
-        readOffset = newR
-        writeOffset = (w + byteCount) % capacity
-        return byteCount
     }
     
     /// Read data from the ring buffer.
     @discardableResult
     public func read(_ dest: UnsafeMutableRawPointer, byteCount: Int) -> Int {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        
-        let r = readOffset
-        let w = writeOffset
-        
-        let available = w >= r ? (w - r) : (capacity - r + w)
-        guard available >= byteCount else {
-            return 0 // Not enough data
-        }
-        
         let rawBuffer = UnsafeRawPointer(buffer)
-        let firstPart = min(byteCount, capacity - r)
-        dest.copyMemory(from: rawBuffer.advanced(by: r), byteCount: firstPart)
-        
-        if firstPart < byteCount {
-            let secondPart = byteCount - firstPart
-            dest.advanced(by: firstPart).copyMemory(from: rawBuffer, byteCount: secondPart)
+        while true {
+            let r = OSAtomicAdd32Barrier(0, readOffsetPtr)
+            let w = OSAtomicAdd32Barrier(0, writeOffsetPtr)
+            
+            let rInt = Int(r)
+            let wInt = Int(w)
+            
+            let available = wInt >= rInt ? (wInt - rInt) : (capacity - rInt + wInt)
+            guard available >= byteCount else {
+                return 0 // Not enough data
+            }
+            
+            let firstPart = min(byteCount, capacity - rInt)
+            dest.copyMemory(from: rawBuffer.advanced(by: rInt), byteCount: firstPart)
+            
+            if firstPart < byteCount {
+                let secondPart = byteCount - firstPart
+                dest.advanced(by: firstPart).copyMemory(from: rawBuffer, byteCount: secondPart)
+            }
+            
+            let nextR = Int32((rInt + byteCount) % capacity)
+            if OSAtomicCompareAndSwap32Barrier(r, nextR, readOffsetPtr) {
+                return byteCount
+            }
         }
-        
-        readOffset = (r + byteCount) % capacity
-        return byteCount
     }
     
     public func clear() {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        writeOffset = 0
-        readOffset = 0
+        while true {
+            let r = OSAtomicAdd32Barrier(0, readOffsetPtr)
+            if OSAtomicCompareAndSwap32Barrier(r, 0, readOffsetPtr) {
+                break
+            }
+        }
+        while true {
+            let w = OSAtomicAdd32Barrier(0, writeOffsetPtr)
+            if OSAtomicCompareAndSwap32Barrier(w, 0, writeOffsetPtr) {
+                break
+            }
+        }
     }
 }

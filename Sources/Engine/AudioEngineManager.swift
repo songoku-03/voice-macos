@@ -427,16 +427,25 @@ public class AudioEngineManager: @unchecked Sendable {
         guard let ringBuffers = ProcessTapManager.shared.getRingBuffers(bundleID: bundleID),
               let tapFormat = ProcessTapManager.shared.getActiveTapFormat(bundleID: bundleID) else {
             print("AudioEngineManager: Failed to get active tap info for routing \(bundleID)")
+            ProcessTapManager.shared.stopTapping(bundleID: bundleID)
+            activePIDs.removeValue(forKey: bundleID)
+            cleanupIdleEngines()
             return
         }
         
         guard let engineFormat = AVAudioFormat(standardFormatWithSampleRate: resolvedRate, channels: 2) else {
             print("AudioEngineManager: Failed to create engine format for routing \(bundleID)")
+            ProcessTapManager.shared.stopTapping(bundleID: bundleID)
+            activePIDs.removeValue(forKey: bundleID)
+            cleanupIdleEngines()
             return
         }
         
         guard let newAppNode = AppAudioNode(ringBuffers: ringBuffers, sourceFormat: tapFormat, engineFormat: engineFormat) else {
             print("AudioEngineManager: Failed to create AppAudioNode for routing \(bundleID)")
+            ProcessTapManager.shared.stopTapping(bundleID: bundleID)
+            activePIDs.removeValue(forKey: bundleID)
+            cleanupIdleEngines()
             return
         }
         
@@ -814,6 +823,10 @@ public class AudioEngineManager: @unchecked Sendable {
     @MainActor
     private func performAppLaunched(bundleID: String, pid: pid_t) {
         if desiredTappedBundleIDs.contains(bundleID) {
+            if let activePid = activePIDs[bundleID], activePid != pid {
+                print("AudioEngineManager: Launched application \(bundleID) has different PID (\(pid)) than active PID (\(activePid)). Cleaning up old tap.")
+                stopAppTapping(bundleID: bundleID)
+            }
             print("AudioEngineManager: Launched application matches desired tapped ID: \(bundleID). Starting tap.")
             startAppTapping(bundleID: bundleID, pid: pid)
         }
@@ -821,31 +834,39 @@ public class AudioEngineManager: @unchecked Sendable {
 
     @objc nonisolated private func handleAppTerminated(_ notification: Notification) {
         let bundleID: String?
+        let pid: pid_t?
         if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
             bundleID = app.bundleIdentifier
+            pid = app.processIdentifier
         } else {
             bundleID = notification.userInfo?["bundleIdentifier"] as? String
+            pid = notification.userInfo?["processIdentifier"] as? pid_t
         }
 
         guard let bundleID = bundleID else { return }
 
         if Thread.isMainThread {
             MainActor.assumeIsolated { [weak self] in
-                self?.performAppTerminated(bundleID: bundleID)
+                self?.performAppTerminated(bundleID: bundleID, pid: pid)
             }
         } else {
             DispatchQueue.main.sync { [weak self] in
                 MainActor.assumeIsolated {
-                    self?.performAppTerminated(bundleID: bundleID)
+                    self?.performAppTerminated(bundleID: bundleID, pid: pid)
                 }
             }
         }
     }
 
     @MainActor
-    private func performAppTerminated(bundleID: String) {
-        if activeNodes[bundleID] != nil || activePIDs[bundleID] != nil {
-            print("AudioEngineManager: Terminated application detected: \(bundleID). Stopping tap.")
+    private func performAppTerminated(bundleID: String, pid: pid_t?) {
+        if let terminatingPid = pid {
+            if activePIDs[bundleID] == terminatingPid {
+                print("AudioEngineManager: Terminated application detected: \(bundleID) (PID: \(terminatingPid)). Stopping tap.")
+                stopAppTapping(bundleID: bundleID)
+            }
+        } else if activeNodes[bundleID] != nil || activePIDs[bundleID] != nil {
+            print("AudioEngineManager: Terminated application detected: \(bundleID) (unknown PID). Stopping tap.")
             stopAppTapping(bundleID: bundleID)
         }
     }

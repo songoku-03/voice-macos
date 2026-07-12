@@ -20,23 +20,23 @@ public final class AppAudioNodeLifetimeToken: @unchecked Sendable {
     let buffersPtr: UnsafeMutablePointer<UnsafeMutableRawPointer>
     let contextPtr: UnsafeMutablePointer<AppAudioConverterContext>?
     let volumePtr: UnsafeMutablePointer<Float>
-    let volumeLock: UnsafeMutablePointer<os_unfair_lock_s>
     let converterLock: UnsafeMutablePointer<os_unfair_lock_s>?
+    let ringBuffers: [RingBuffer]
     
     init(
         converter: AudioConverterRef?,
         buffersPtr: UnsafeMutablePointer<UnsafeMutableRawPointer>,
         contextPtr: UnsafeMutablePointer<AppAudioConverterContext>?,
         volumePtr: UnsafeMutablePointer<Float>,
-        volumeLock: UnsafeMutablePointer<os_unfair_lock_s>,
-        converterLock: UnsafeMutablePointer<os_unfair_lock_s>?
+        converterLock: UnsafeMutablePointer<os_unfair_lock_s>?,
+        ringBuffers: [RingBuffer]
     ) {
         self.converter = converter
         self.buffersPtr = buffersPtr
         self.contextPtr = contextPtr
         self.volumePtr = volumePtr
-        self.volumeLock = volumeLock
         self.converterLock = converterLock
+        self.ringBuffers = ringBuffers
     }
     
     deinit {
@@ -55,8 +55,6 @@ public final class AppAudioNodeLifetimeToken: @unchecked Sendable {
         buffersPtr.deallocate()
         volumePtr.deinitialize(count: 1)
         volumePtr.deallocate()
-        volumeLock.deinitialize(count: 1)
-        volumeLock.deallocate()
         if let cLock = converterLock {
             cLock.deinitialize(count: 1)
             cLock.deallocate()
@@ -76,19 +74,22 @@ public class AppAudioNode: @unchecked Sendable {
     private let engineFormat: AVAudioFormat
     
     private let volumePtr: UnsafeMutablePointer<Float>
-    private let volumeLock: UnsafeMutablePointer<os_unfair_lock_s>
     private let lifetimeToken: AppAudioNodeLifetimeToken
     
     public var volume: Float {
         get {
-            os_unfair_lock_lock(volumeLock)
-            defer { os_unfair_lock_unlock(volumeLock) }
-            return volumePtr.pointee
+            let bits = OSAtomicAdd32Barrier(0, UnsafeMutableRawPointer(volumePtr).assumingMemoryBound(to: Int32.self))
+            return Float(bitPattern: UInt32(bitPattern: bits))
         }
         set {
-            os_unfair_lock_lock(volumeLock)
-            defer { os_unfair_lock_unlock(volumeLock) }
-            volumePtr.pointee = newValue
+            let bits = Int32(bitPattern: newValue.bitPattern)
+            let intPtr = UnsafeMutableRawPointer(volumePtr).assumingMemoryBound(to: Int32.self)
+            while true {
+                let old = OSAtomicAdd32Barrier(0, intPtr)
+                if OSAtomicCompareAndSwap32Barrier(old, bits, intPtr) {
+                    break
+                }
+            }
         }
     }
     
@@ -132,10 +133,6 @@ public class AppAudioNode: @unchecked Sendable {
         volumePtr.initialize(to: 1.0)
         self.volumePtr = volumePtr
         
-        let volumeLock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
-        volumeLock.initialize(to: os_unfair_lock_s())
-        self.volumeLock = volumeLock
-        
         var tempConverter: AudioConverterRef? = nil
         var contextPtr: UnsafeMutablePointer<AppAudioConverterContext>? = nil
         var converterLock: UnsafeMutablePointer<os_unfair_lock_s>? = nil
@@ -176,8 +173,6 @@ public class AppAudioNode: @unchecked Sendable {
                 buffersPtr.deallocate()
                 volumePtr.deinitialize(count: 1)
                 volumePtr.deallocate()
-                volumeLock.deinitialize(count: 1)
-                volumeLock.deallocate()
                 return nil
             }
         }
@@ -187,8 +182,8 @@ public class AppAudioNode: @unchecked Sendable {
             buffersPtr: buffersPtr,
             contextPtr: contextPtr,
             volumePtr: volumePtr,
-            volumeLock: volumeLock,
-            converterLock: converterLock
+            converterLock: converterLock,
+            ringBuffers: ringBuffers
         )
         self.lifetimeToken = lifetimeToken
         
@@ -198,7 +193,7 @@ public class AppAudioNode: @unchecked Sendable {
 
         self.spectrumTap.sampleRate = Float(dstFormat.mSampleRate > 0 ? dstFormat.mSampleRate : 48000)
 
-        self.sourceNode = AVAudioSourceNode(format: engineFormat) { [lifetimeToken, bufferCount, buffersPtr, contextPtr, volumePtr, volumeLock, opaqueSpectrum, bytesPerFrame, localConverter, spectrumTap = self.spectrumTap] isSilence, timestamp, frameCount, ioData in
+        self.sourceNode = AVAudioSourceNode(format: engineFormat) { [lifetimeToken, bufferCount, buffersPtr, contextPtr, volumePtr, opaqueSpectrum, bytesPerFrame, localConverter, spectrumTap = self.spectrumTap] isSilence, timestamp, frameCount, ioData in
             if let conv = localConverter, let ctxPtr = contextPtr {
                 var ioOutputDataPackets = frameCount
                 let status = AudioConverterFillComplexBuffer(
@@ -260,9 +255,8 @@ public class AppAudioNode: @unchecked Sendable {
                 }
             }
 
-            os_unfair_lock_lock(volumeLock)
-            let vol = volumePtr.pointee
-            os_unfair_lock_unlock(volumeLock)
+            let bits = OSAtomicAdd32Barrier(0, UnsafeMutableRawPointer(volumePtr).assumingMemoryBound(to: Int32.self))
+            let vol = Float(bitPattern: UInt32(bitPattern: bits))
             
             // Apply gain whenever volume isn't unity — both attenuation (< 1.0) and amplification (> 1.0).
             if vol != 1.0 {
@@ -285,8 +279,8 @@ public class AppAudioNode: @unchecked Sendable {
             // Push rendered output into the spectrum analyzer (UI-thread runs the FFT).
             Unmanaged<SpectrumTap>.fromOpaque(opaqueSpectrum)._withUnsafeGuaranteedRef { $0.capture(ioData, frameCount: Int(frameCount)) }
 
-            _ = spectrumTap
-            _ = lifetimeToken
+            _ = Unmanaged.passUnretained(spectrumTap)
+            _ = Unmanaged.passUnretained(lifetimeToken)
             return noErr
         }
     }
@@ -297,9 +291,7 @@ private let converterInputProc: AudioConverterComplexInputDataProc = { _, ioNumb
     guard let userData = inUserData else { return -1 }
     let contextPtr = userData.assumingMemoryBound(to: AppAudioConverterContext.self)
     
-    os_unfair_lock_lock(contextPtr.pointee.lock)
     let context = contextPtr.pointee
-    os_unfair_lock_unlock(contextPtr.pointee.lock)
 
     let bytesPerFrame = context.bytesPerFrame
     let requestedFrames = min(Int(ioNumberDataPackets.pointee), context.scratchCapacityFrames)

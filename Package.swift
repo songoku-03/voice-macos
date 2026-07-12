@@ -29,10 +29,7 @@ let package = Package(
         .executableTarget(
             name: "SoundsSource",
             dependencies: ["Core", "Engine", "UI"],
-            path: "Sources/SoundsSource",
-            swiftSettings: [
-                .enableUpcomingFeature("BareSlashRegexLiterals")
-            ]
+            path: "Sources/SoundsSource"
         ),
         .testTarget(
             name: "EngineTests",

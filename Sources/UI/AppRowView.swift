@@ -144,9 +144,11 @@ public struct AppRowView: View {
                 engineManager.userStopAppTapping(bundleID: process.bundleID)
             } else {
                 engineManager.startAppTapping(bundleID: process.bundleID, pid: process.pid)
-                // Auto expand when tapped
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    isExpanded = true
+                // Auto expand only if tapped successfully
+                if engineManager.activeNodes[process.bundleID] != nil {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        isExpanded = true
+                    }
                 }
             }
             try? await Task.sleep(for: .milliseconds(200))
@@ -177,8 +179,11 @@ struct VUMeterView: View {
         .frame(width: 31, height: 12)
         .onReceive(timer) { _ in
             guard isActive else {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    levels = Array(repeating: 0.1, count: 6)
+                let defaultLevels = Array(repeating: CGFloat(0.1), count: 6)
+                if levels != defaultLevels {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        levels = defaultLevels
+                    }
                 }
                 return
             }

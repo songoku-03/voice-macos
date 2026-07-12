@@ -378,27 +378,29 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 }
 
-// C-style IOProc callback — runs on real-time audio thread, must be allocation-free and lock-free.
 @available(macOS 14.2, *)
 private let tapIOProc: AudioDeviceIOProc = { inDevice, _, inInputData, _, _, _, inClientData in
     guard let clientData = inClientData else { return noErr }
-    let context = Unmanaged<TapIOContext>.fromOpaque(clientData).takeUnretainedValue()
+    _ = Unmanaged<TapIOContext>.fromOpaque(clientData)._withUnsafeGuaranteedRef { context in
+        let ringBuffersPtr = context.buffersPtr
+        let ringBuffersCount = context.bufferCount
 
-    let ringBuffersPtr = context.buffersPtr
-    let ringBuffersCount = context.bufferCount
+        let numberBuffers = inInputData.pointee.mNumberBuffers
+        let mBuffersOffset = MemoryLayout<AudioBufferList>.offset(of: \AudioBufferList.mBuffers)!
+        let firstBufferPtr = UnsafeRawPointer(inInputData)
+            .advanced(by: mBuffersOffset)
+            .assumingMemoryBound(to: AudioBuffer.self)
 
-    let numberBuffers = inInputData.pointee.mNumberBuffers
-    let mBuffersOffset = MemoryLayout<AudioBufferList>.offset(of: \AudioBufferList.mBuffers)!
-    let firstBufferPtr = UnsafeRawPointer(inInputData)
-        .advanced(by: mBuffersOffset)
-        .assumingMemoryBound(to: AudioBuffer.self)
-
-    let buffers = UnsafeBufferPointer(start: firstBufferPtr, count: Int(numberBuffers))
-    for i in 0..<Int(numberBuffers) {
-        if i < ringBuffersCount, let mData = buffers[i].mData, buffers[i].mDataByteSize > 0 {
-            let rb = Unmanaged<RingBuffer>.fromOpaque(ringBuffersPtr[i]).takeUnretainedValue()
-            rb.writeOverwriting(mData, byteCount: Int(buffers[i].mDataByteSize))
+        let buffers = UnsafeBufferPointer(start: firstBufferPtr, count: Int(numberBuffers))
+        for i in 0..<Int(numberBuffers) {
+            if i < ringBuffersCount, let mData = buffers[i].mData, buffers[i].mDataByteSize > 0 {
+                _ = Unmanaged<RingBuffer>.fromOpaque(ringBuffersPtr[i])._withUnsafeGuaranteedRef { rb -> Bool in
+                    rb.writeOverwriting(mData, byteCount: Int(buffers[i].mDataByteSize))
+                    return true
+                }
+            }
         }
+        return true
     }
 
     return noErr

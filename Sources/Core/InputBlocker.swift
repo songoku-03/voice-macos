@@ -73,8 +73,22 @@ public final class InputBlocker: @unchecked Sendable {
 
     // MARK: - nonisolated(unsafe) state read by the C callback
 
+    private let lock: UnsafeMutablePointer<os_unfair_lock_s>
+    private var _isActive: Bool = false
+
     /// When `true`, the callback suppresses matched key events.
-    nonisolated(unsafe) private var isActive: Bool = false
+    nonisolated private var isActive: Bool {
+        get {
+            os_unfair_lock_lock(lock)
+            defer { os_unfair_lock_unlock(lock) }
+            return _isActive
+        }
+        set {
+            os_unfair_lock_lock(lock)
+            defer { os_unfair_lock_unlock(lock) }
+            _isActive = newValue
+        }
+    }
 
     // MARK: - Private
 
@@ -85,7 +99,16 @@ public final class InputBlocker: @unchecked Sendable {
     // Watchdog timer independent of the state machine (2.6).
     private var watchdogTimer: DispatchSourceTimer?
 
-    public init() {}
+    public init() {
+        self.lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+        self.lock.initialize(to: os_unfair_lock_s())
+    }
+
+    deinit {
+        uninstall()
+        lock.deinitialize(count: 1)
+        lock.deallocate()
+    }
 
     // MARK: - Public API
 
