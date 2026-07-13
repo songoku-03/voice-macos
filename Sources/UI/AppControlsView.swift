@@ -7,9 +7,22 @@ public struct AppControlsView: View {
     let bundleID: String
     let eqController: EQController
 
-    @State private var volume: Float = 1.0
-    @State private var isMuted = false
     @State private var isEQBypassed = false
+
+    private var volume: Float {
+        AudioEngineManager.shared.getVolume(bundleID: bundleID)
+    }
+
+    private var isMuted: Bool {
+        AudioEngineManager.shared.getMute(bundleID: bundleID)
+    }
+
+    private var volumeBinding: Binding<Float> {
+        Binding(
+            get: { AudioEngineManager.shared.getVolume(bundleID: bundleID) },
+            set: { AudioEngineManager.shared.setVolume(bundleID: bundleID, volume: $0) }
+        )
+    }
 
     public init(bundleID: String, eqController: EQController) {
         self.bundleID = bundleID
@@ -61,10 +74,7 @@ public struct AppControlsView: View {
                 }
                 .buttonStyle(.plain)
 
-                CustomSlider(value: $volume)
-                    .onChange(of: volume) { _, newValue in
-                        AudioEngineManager.shared.setVolume(bundleID: bundleID, volume: newValue)
-                    }
+                CustomSlider(value: volumeBinding)
 
                 Text("\(Int(volume * 100))%")
                     .font(DSFont.mono)
@@ -107,15 +117,12 @@ public struct AppControlsView: View {
         }
         .padding(.vertical, DS.s)
         .onAppear {
-            self.volume = AudioEngineManager.shared.getVolume(bundleID: bundleID)
-            self.isMuted = AudioEngineManager.shared.getMute(bundleID: bundleID)
             self.isEQBypassed = eqController.avAudioUnit.bypass
         }
     }
 
     private func toggleMute() {
-        isMuted.toggle()
-        AudioEngineManager.shared.setMute(bundleID: bundleID, muted: isMuted)
+        AudioEngineManager.shared.setMute(bundleID: bundleID, muted: !isMuted)
     }
 
     private func toggleEQBypass() {
