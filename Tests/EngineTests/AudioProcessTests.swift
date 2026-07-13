@@ -197,6 +197,21 @@ final class AudioProcessTests: XCTestCase {
         XCTAssertEqual(rows[0].bundleID, "com.apple.finder")
     }
 
+    func testDeduplicationEmptyBundleIDSameNameCasing() {
+        // Explicitly validating the case from the Acceptance Criteria:
+        // (bundleID: "", name: "finder") merging with (bundleID: "com.apple.finder", name: "Finder")
+        let rows = AudioProcess.visibleRows(
+            from: [
+                proc(1, "finder", bundleID: "", regular: true),
+                proc(2, "Finder", bundleID: "com.apple.finder", regular: true)
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].name, "Finder")
+        XCTAssertEqual(rows[0].bundleID, "com.apple.finder")
+    }
+
     func testNoTransitiveGroupingDifferentBundleIDs() {
         let rows = AudioProcess.visibleRows(
             from: [

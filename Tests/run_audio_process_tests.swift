@@ -290,6 +290,19 @@ runTest("testDeduplicationEmptyBundleIDSameName") {
     assertEqual(rows[0].bundleID, "com.apple.finder")
 }
 
+runTest("testDeduplicationEmptyBundleIDSameNameCasing") {
+    let rows = AudioProcess.visibleRows(
+        from: [
+            proc(1, "finder", bundleID: "", regular: true),
+            proc(2, "Finder", bundleID: "com.apple.finder", regular: true)
+        ],
+        tappedBundleIDs: []
+    )
+    assertEqual(rows.count, 1)
+    assertEqual(rows[0].name, "Finder")
+    assertEqual(rows[0].bundleID, "com.apple.finder")
+}
+
 runTest("testNoTransitiveGroupingDifferentBundleIDs") {
     let rows = AudioProcess.visibleRows(
         from: [
