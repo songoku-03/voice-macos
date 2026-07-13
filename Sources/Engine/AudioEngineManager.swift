@@ -483,7 +483,12 @@ public class AudioEngineManager: @unchecked Sendable {
         busVolumes[bundleID] = volume
         if let appNode = activeNodes[bundleID] {
             let muted = isMuted[bundleID] ?? false
-            appNode.volume = muted ? 0.0 : volume
+            if BreakTimerManager.shared.phase == .breaking {
+                appNode.volume = muted ? 0.0 : volume * 0.1
+                BreakTimerManager.shared.updatePreBreakVolume(bundleID: bundleID, volume: volume)
+            } else {
+                appNode.volume = muted ? 0.0 : volume
+            }
         }
     }
     
@@ -496,12 +501,22 @@ public class AudioEngineManager: @unchecked Sendable {
         isMuted[bundleID] = muted
         if let appNode = activeNodes[bundleID] {
             let vol = getVolume(bundleID: bundleID)
-            appNode.volume = muted ? 0.0 : vol
+            if BreakTimerManager.shared.phase == .breaking {
+                appNode.volume = muted ? 0.0 : vol * 0.1
+            } else {
+                appNode.volume = muted ? 0.0 : vol
+            }
         }
     }
     
     public func getMute(bundleID: String) -> Bool {
         return isMuted[bundleID] ?? false
+    }
+    
+    public func setNodeVolumeDirect(bundleID: String, volume: Float) {
+        if let appNode = activeNodes[bundleID] {
+            appNode.volume = volume
+        }
     }
     
     // Presets

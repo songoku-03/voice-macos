@@ -167,4 +167,102 @@ final class BreakTimerManagerTests: XCTestCase {
             XCTAssertEqual(m.completedSessionsToday, initial + 1)
         }
     }
+
+    func testUpdatePreBreakVolumeDuringBreak() {
+        let m = BreakTimerManager()
+        m.studyDuration = 0.001
+        m.breakDuration = 10
+        m.start()
+        
+        Thread.sleep(forTimeInterval: 0.05)
+        
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        XCTAssertEqual(m.phase, .breaking)
+        
+        m.updatePreBreakVolume(bundleID: "com.apple.finder", volume: 0.75)
+        
+        let dict = UserDefaults.standard.dictionary(forKey: "btm_preBreakVolumes") as? [String: Double]
+        XCTAssertEqual(dict?["com.apple.finder"], 0.75)
+        
+        m.stop()
+    }
+
+    func testDuckingAndRestoreVolume() {
+        class MockAudioEngineManager: AudioEngineManager {
+            var lastDirectVolume: [String: Float] = [:]
+            var lastSetVolume: [String: Float] = [:]
+            var mockMuted: [String: Bool] = [:]
+            var mockActiveNodes: [String: AppAudioNode] = [:]
+            
+            override var activeNodes: [String: AppAudioNode] {
+                return mockActiveNodes
+            }
+            
+            override func getVolume(bundleID: String) -> Float {
+                return lastSetVolume[bundleID] ?? 0.8
+            }
+            
+            override func setVolume(bundleID: String, volume: Float) {
+                lastSetVolume[bundleID] = volume
+            }
+            
+            override func getMute(bundleID: String) -> Bool {
+                return mockMuted[bundleID] ?? false
+            }
+            
+            override func setNodeVolumeDirect(bundleID: String, volume: Float) {
+                lastDirectVolume[bundleID] = volume
+            }
+        }
+        
+        let m = BreakTimerManager()
+        let mockEngine = MockAudioEngineManager()
+        m.audioEngineManager = mockEngine
+        
+        let bundleID = "com.apple.Safari"
+        let dummyBuffer = RingBuffer(capacity: 64)
+        var dummyASBD = AudioStreamBasicDescription()
+        dummyASBD.mSampleRate = 48000.0
+        dummyASBD.mFormatID = kAudioFormatLinearPCM
+        dummyASBD.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagsNativeEndian
+        dummyASBD.mBytesPerPacket = 8
+        dummyASBD.mFramesPerPacket = 1
+        dummyASBD.mBytesPerFrame = 8
+        dummyASBD.mChannelsPerFrame = 2
+        dummyASBD.mBitsPerChannel = 32
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
+        let dummyNode = AppAudioNode(ringBuffers: [dummyBuffer], sourceFormat: dummyASBD, engineFormat: format)!
+        
+        mockEngine.mockActiveNodes[bundleID] = dummyNode
+        mockEngine.setVolume(bundleID: bundleID, volume: 0.8)
+        
+        m.studyDuration = 0.001
+        m.breakDuration = 10
+        m.start()
+        
+        // Trigger warning/breaking
+        Thread.sleep(forTimeInterval: 0.05)
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        XCTAssertEqual(m.phase, .breaking)
+        
+        // Node volume should have ducked to 10% (0.08)
+        XCTAssertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8) * Float(0.1))
+        // Persistent/target volume in settings should STILL be 0.8 (Not ducked!)
+        XCTAssertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
+        
+        // Stop break/timer
+        m.stop()
+        
+        // Node volume should have restored to 0.8
+        XCTAssertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8))
+        XCTAssertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
+    }
 }

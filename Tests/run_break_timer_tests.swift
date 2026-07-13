@@ -62,10 +62,20 @@ import ApplicationServices
 public class AudioEngineManager {
     public static let shared = AudioEngineManager()
     public var activeNodes: [String: Any] = [:]
-    public func getVolume(bundleID: String) -> Float { return 0.8 }
-    public func setVolume(bundleID: String, volume: Float) {}
+    public var lastSetVolume: [String: Float] = [:]
+    public var lastDirectVolume: [String: Float] = [:]
+    public var mutedStates: [String: Bool] = [:]
+    
+    public func getVolume(bundleID: String) -> Float { return lastSetVolume[bundleID] ?? 0.8 }
+    public func setVolume(bundleID: String, volume: Float) {
+        lastSetVolume[bundleID] = volume
+    }
     public func stopAppTapping(bundleID: String) {}
     public func startAppTapping(bundleID: String, pid: pid_t) {}
+    public func getMute(bundleID: String) -> Bool { return mutedStates[bundleID] ?? false }
+    public func setNodeVolumeDirect(bundleID: String, volume: Float) {
+        lastDirectVolume[bundleID] = volume
+    }
 }
 
 public protocol InputBlockerProtocol: AnyObject {
@@ -232,6 +242,68 @@ func runBreakTimerManagerTests() {
             m.snooze()
             assertEqual(m.phase, .studying) // should remain studying
         }
+    }
+
+    runTest("testUpdatePreBreakVolumeDuringBreak") {
+        let m = BreakTimerManager()
+        m.studyDuration = 0.001
+        m.breakDuration = 10
+        m.start()
+        
+        // Sleep a tiny bit to ensure the deadline is in the past
+        Thread.sleep(forTimeInterval: 0.05)
+        
+        // Post the wake notification to trigger enterBreaking()
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        // Now phase should be breaking
+        assertEqual(m.phase, .breaking)
+        
+        // Test updatePreBreakVolume
+        m.updatePreBreakVolume(bundleID: "com.apple.finder", volume: 0.75)
+        
+        let dict = UserDefaults.standard.dictionary(forKey: "btm_preBreakVolumes") as? [String: Double]
+        assertEqual(dict?["com.apple.finder"], 0.75)
+        
+        // Clean up
+        m.stop()
+    }
+
+    runTest("testDuckingAndRestoreVolume") {
+        let m = BreakTimerManager()
+        let mockEngine = m.audioEngineManager
+        
+        let bundleID = "com.apple.Safari"
+        mockEngine.activeNodes[bundleID] = "mock_node"
+        mockEngine.setVolume(bundleID: bundleID, volume: 0.8)
+        
+        m.studyDuration = 0.001
+        m.breakDuration = 10
+        m.start()
+        
+        // Trigger warning/breaking
+        Thread.sleep(forTimeInterval: 0.05)
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        assertEqual(m.phase, .breaking)
+        
+        // Node volume should have ducked to 10% (0.08)
+        assertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8) * Float(0.1))
+        // Persistent/target volume in settings should STILL be 0.8 (Not ducked!)
+        assertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
+        
+        // Stop break/timer
+        m.stop()
+        
+        // Node volume should have restored to 0.8
+        assertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8))
+        assertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
     }
 
     print("\n📝 Test Summary:")

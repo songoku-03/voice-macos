@@ -66,14 +66,16 @@ public final class BreakTimerManager {
 
     /// Study duration in seconds.
     public var studyDuration: TimeInterval {
-        get { TimeInterval(UserDefaults.standard.double(forKey: "btm_studyDuration").nonZeroOr(25 * 60)) }
-        set { UserDefaults.standard.set(newValue, forKey: "btm_studyDuration") }
+        didSet {
+            UserDefaults.standard.set(studyDuration, forKey: "btm_studyDuration")
+        }
     }
 
     /// Break duration in seconds.
     public var breakDuration: TimeInterval {
-        get { TimeInterval(UserDefaults.standard.double(forKey: "btm_breakDuration").nonZeroOr(5 * 60)) }
-        set { UserDefaults.standard.set(newValue, forKey: "btm_breakDuration") }
+        didSet {
+            UserDefaults.standard.set(breakDuration, forKey: "btm_breakDuration")
+        }
     }
 
     public var isConfigValid: Bool {
@@ -83,35 +85,18 @@ public final class BreakTimerManager {
     // MARK: Completed Sessions Stats
 
     public var completedSessionsToday: Int {
-        get {
-            let lastDate = UserDefaults.standard.string(forKey: "btm_lastSessionDate") ?? ""
-            let today = Calendar.current.startOfDay(for: Date()).description
-            if lastDate != today {
-                UserDefaults.standard.set(today, forKey: "btm_lastSessionDate")
-                UserDefaults.standard.set(0, forKey: "btm_completedSessions")
-                return 0
-            }
-            return UserDefaults.standard.integer(forKey: "btm_completedSessions")
-        }
-        set {
+        didSet {
             let today = Calendar.current.startOfDay(for: Date()).description
             UserDefaults.standard.set(today, forKey: "btm_lastSessionDate")
-            UserDefaults.standard.set(newValue, forKey: "btm_completedSessions")
+            UserDefaults.standard.set(completedSessionsToday, forKey: "btm_completedSessions")
         }
     }
 
     // MARK: Todo List State & Operations
 
     public var todoItems: [TodoItem] {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: "btm_todoItems"),
-                  let items = try? JSONDecoder().decode([TodoItem].self, from: data) else {
-                return []
-            }
-            return items
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
+        didSet {
+            if let data = try? JSONEncoder().encode(todoItems) {
                 UserDefaults.standard.set(data, forKey: "btm_todoItems")
             }
         }
@@ -177,6 +162,29 @@ public final class BreakTimerManager {
     public static let shared = BreakTimerManager()
 
     public init() {
+        let study = UserDefaults.standard.double(forKey: "btm_studyDuration")
+        self.studyDuration = study > 0 ? study : 25 * 60
+
+        let brk = UserDefaults.standard.double(forKey: "btm_breakDuration")
+        self.breakDuration = brk > 0 ? brk : 5 * 60
+
+        let lastDate = UserDefaults.standard.string(forKey: "btm_lastSessionDate") ?? ""
+        let today = Calendar.current.startOfDay(for: Date()).description
+        if lastDate != today {
+            UserDefaults.standard.set(today, forKey: "btm_lastSessionDate")
+            UserDefaults.standard.set(0, forKey: "btm_completedSessions")
+            self.completedSessionsToday = 0
+        } else {
+            self.completedSessionsToday = UserDefaults.standard.integer(forKey: "btm_completedSessions")
+        }
+
+        if let data = UserDefaults.standard.data(forKey: "btm_todoItems"),
+           let items = try? JSONDecoder().decode([TodoItem].self, from: data) {
+            self.todoItems = items
+        } else {
+            self.todoItems = []
+        }
+
         setupWorkspaceObservers()
         crashSafeRestoreIfNeeded()
     }
@@ -494,8 +502,8 @@ public final class BreakTimerManager {
         for bundleID in manager.activeNodes.keys {
             let vol = manager.getVolume(bundleID: bundleID)
             snapshot[bundleID] = vol
-            // Hạ về 10% nhưng không mute hẳn (tránh jarring khi restore).
-            manager.setVolume(bundleID: bundleID, volume: vol * 0.1)
+            let muted = manager.getMute(bundleID: bundleID)
+            manager.setNodeVolumeDirect(bundleID: bundleID, volume: muted ? 0.0 : vol * 0.1)
         }
 
         preBreakVolumes = snapshot
@@ -513,10 +521,9 @@ public final class BreakTimerManager {
         }
         let manager = audioEngineManager
         for (bundleID, vol) in preBreakVolumes {
-            // 6.5: Only restore if still at ducked level (policy (b) fallback);
-            // since we lock per-app volume during break (6.5 policy (a)), this is the
-            // canonical restore call.
-            manager.setVolume(bundleID: bundleID, volume: vol)
+            // Restore appNode's volume directly.
+            let muted = manager.getMute(bundleID: bundleID)
+            manager.setNodeVolumeDirect(bundleID: bundleID, volume: muted ? 0.0 : vol)
         }
         preBreakVolumes = [:]
         clearDuckingPersistence()
@@ -529,8 +536,20 @@ public final class BreakTimerManager {
         let targetManager = manager ?? audioEngineManager
         let vol = targetManager.getVolume(bundleID: bundleID)
         preBreakVolumes[bundleID] = vol   // record pre-break volume
-        targetManager.setVolume(bundleID: bundleID, volume: vol * 0.1)
 
+        let muted = targetManager.getMute(bundleID: bundleID)
+        targetManager.setNodeVolumeDirect(bundleID: bundleID, volume: muted ? 0.0 : vol * 0.1)
+
+        // Persist updated map.
+        let encoded = preBreakVolumes.mapValues { Double($0) }
+        UserDefaults.standard.set(encoded, forKey: BreakTimerManager.preBreakVolumesKey)
+    }
+
+    /// Update pre-break volume snapshot if user changes it during break (6.5)
+    public func updatePreBreakVolume(bundleID: String, volume: Float) {
+        guard phase == .breaking else { return }
+        preBreakVolumes[bundleID] = volume
+        
         // Persist updated map.
         let encoded = preBreakVolumes.mapValues { Double($0) }
         UserDefaults.standard.set(encoded, forKey: BreakTimerManager.preBreakVolumesKey)
