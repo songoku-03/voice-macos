@@ -24,6 +24,20 @@ private func promptAccessibilityPermission() -> Bool {
     return AXIsProcessTrustedWithOptions(options)
 }
 
+// MARK: - TodoItem Model
+
+public struct TodoItem: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var title: String
+    public var isCompleted: Bool
+    
+    public init(id: UUID = UUID(), title: String, isCompleted: Bool = false) {
+        self.id = id
+        self.title = title
+        self.isCompleted = isCompleted
+    }
+}
+
 // MARK: - BreakTimerManager
 
 /// Central state machine for the eye-rest timer feature.
@@ -64,6 +78,65 @@ public final class BreakTimerManager {
 
     public var isConfigValid: Bool {
         studyDuration > 0 && breakDuration > 0
+    }
+
+    // MARK: Completed Sessions Stats
+
+    public var completedSessionsToday: Int {
+        get {
+            let lastDate = UserDefaults.standard.string(forKey: "btm_lastSessionDate") ?? ""
+            let today = Calendar.current.startOfDay(for: Date()).description
+            if lastDate != today {
+                UserDefaults.standard.set(today, forKey: "btm_lastSessionDate")
+                UserDefaults.standard.set(0, forKey: "btm_completedSessions")
+                return 0
+            }
+            return UserDefaults.standard.integer(forKey: "btm_completedSessions")
+        }
+        set {
+            let today = Calendar.current.startOfDay(for: Date()).description
+            UserDefaults.standard.set(today, forKey: "btm_lastSessionDate")
+            UserDefaults.standard.set(newValue, forKey: "btm_completedSessions")
+        }
+    }
+
+    // MARK: Todo List State & Operations
+
+    public var todoItems: [TodoItem] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: "btm_todoItems"),
+                  let items = try? JSONDecoder().decode([TodoItem].self, from: data) else {
+                return []
+            }
+            return items
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: "btm_todoItems")
+            }
+        }
+    }
+
+    public func addTodoItem(title: String) {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        var current = todoItems
+        current.append(TodoItem(title: clean))
+        todoItems = current
+    }
+
+    public func toggleTodoItem(id: UUID) {
+        var current = todoItems
+        if let idx = current.firstIndex(where: { $0.id == id }) {
+            current[idx].isCompleted.toggle()
+            todoItems = current
+        }
+    }
+
+    public func deleteTodoItem(id: UUID) {
+        var current = todoItems
+        current.removeAll(where: { $0.id == id })
+        todoItems = current
     }
 
     // MARK: Lock mode
@@ -133,6 +206,16 @@ public final class BreakTimerManager {
     public func skip() {
         guard phase == .breaking || phase == .warning else { return }
         endBreak(reason: .skipped)
+    }
+
+    /// Delay/Snooze the upcoming break by 5 minutes during the warning phase.
+    public func snooze() {
+        guard phase == .warning else { return }
+        phase = .studying
+        let snoozeDuration: TimeInterval = 5 * 60
+        deadline = Date().addingTimeInterval(snoozeDuration)
+        remaining = snoozeDuration
+        updateStatusItem()
     }
 
     // MARK: - State transitions
@@ -209,6 +292,9 @@ public final class BreakTimerManager {
 
         // 7. Auto-loop (trừ khi bị stop/terminate).
         if reason == .timeout || reason == .skipped {
+            if reason == .timeout {
+                completedSessionsToday += 1
+            }
             // Small delay to let chime start before restarting.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.enterStudying()

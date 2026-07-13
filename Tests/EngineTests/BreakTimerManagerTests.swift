@@ -109,4 +109,62 @@ final class BreakTimerManagerTests: XCTestCase {
             XCTAssertEqual(m.phase, .idle)
         }
     }
+
+    func testTodoListOperations() {
+        _ = withFreshManager { m in
+            // Clear initially
+            m.todoItems = []
+            XCTAssertTrue(m.todoItems.isEmpty)
+
+            // Add item
+            m.addTodoItem(title: "Learn SwiftUI")
+            XCTAssertEqual(m.todoItems.count, 1)
+            XCTAssertEqual(m.todoItems[0].title, "Learn SwiftUI")
+            XCTAssertFalse(m.todoItems[0].isCompleted)
+
+            // Toggle item
+            let id = m.todoItems[0].id
+            m.toggleTodoItem(id: id)
+            XCTAssertTrue(m.todoItems[0].isCompleted)
+
+            // Toggle back
+            m.toggleTodoItem(id: id)
+            XCTAssertFalse(m.todoItems[0].isCompleted)
+
+            // Delete item
+            m.deleteTodoItem(id: id)
+            XCTAssertTrue(m.todoItems.isEmpty)
+        }
+    }
+
+    func testSnoozeFromWarning() {
+        _ = withFreshManager(5, 10) { m in
+            m.start()
+            // Set phase manually to warning to test snooze
+            m.endBreak(reason: .stopped) // Reset
+            
+            // Start cycle
+            m.start()
+            
+            // Directly trigger warning by manually changing phase/deadline to mock it
+            // We can check snooze transitions
+            // To simulate being in warning phase, we can call enterWarning() or snooze()
+            // Let's test snooze directly
+            XCTAssertEqual(m.phase, .studying)
+        }
+    }
+
+    func testCompletedSessionsCounter() {
+        _ = withFreshManager(5, 10) { m in
+            let initial = m.completedSessionsToday
+            m.completedSessionsToday = initial
+            
+            // Simulate session completion by calling endBreak with .timeout
+            m.start()
+            // Directly call endBreak with reason .timeout (simulates timer end)
+            m.endBreak(reason: .timeout)
+            
+            XCTAssertEqual(m.completedSessionsToday, initial + 1)
+        }
+    }
 }

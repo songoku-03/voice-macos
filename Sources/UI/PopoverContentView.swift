@@ -68,7 +68,7 @@ public struct PopoverContentView: View {
                         .padding(.vertical, DS.s)
                 }
             }
-            .frame(maxHeight: 420)
+            .frame(maxHeight: 500)
 
             // Footer — Save Preset & Quit
             HStack {

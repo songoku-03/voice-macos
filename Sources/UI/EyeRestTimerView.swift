@@ -4,7 +4,8 @@ import AppKit
 
 /// Eye-rest timer control panel embedded in the popover (5.1–5.4).
 /// Contains duration inputs, Start/Stop button, status display,
-/// and Accessibility permission guidance.
+/// Accessibility permission guidance, a Snooze/Delay button,
+/// and a persisted Todo List for productivity.
 @available(macOS 14.2, *)
 public struct EyeRestTimerView: View {
 
@@ -14,6 +15,7 @@ public struct EyeRestTimerView: View {
     @State private var studyMinutesText: String = ""
     @State private var breakMinutesText: String = ""
     @State private var showAccessibilityAlert = false
+    @State private var newTodoTitle = ""
 
     public init() {}
 
@@ -22,13 +24,21 @@ public struct EyeRestTimerView: View {
     public var body: some View {
         VStack(spacing: DS.m) {
             // Section header
-            HStack {
+            HStack(spacing: DS.xs) {
                 Image(systemName: "eye.circle.fill")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(DS.accent)
                 Text("Nghỉ mắt")
                     .font(DSFont.label)
                     .foregroundStyle(DS.textPrimary)
+                
+                if manager.completedSessionsToday > 0 {
+                    Text("• 📖 \(manager.completedSessionsToday)")
+                        .font(DSFont.caption)
+                        .foregroundStyle(DS.accent)
+                        .fontWeight(.bold)
+                }
+                
                 Spacer()
                 // 5.3: Status badge — visible even when popover is open
                 if manager.phase != .idle {
@@ -36,18 +46,48 @@ public struct EyeRestTimerView: View {
                 }
             }
 
-            // 5.1: Duration inputs
-            HStack(spacing: DS.s) {
-                durationField(
-                    label: "Học (phút)",
-                    text: $studyMinutesText,
-                    placeholder: "25"
-                )
-                durationField(
-                    label: "Nghỉ (phút)",
-                    text: $breakMinutesText,
-                    placeholder: "1"
-                )
+            // 5.1: Duration inputs (only editable when idle)
+            if manager.phase == .idle {
+                HStack(spacing: DS.s) {
+                    durationField(
+                        label: "Học (phút)",
+                        text: $studyMinutesText,
+                        placeholder: "25"
+                    )
+                    durationField(
+                        label: "Nghỉ (phút)",
+                        text: $breakMinutesText,
+                        placeholder: "1"
+                    )
+                }
+            }
+
+            // Snooze / Delay Break button (Visible ONLY during warning phase)
+            if manager.phase == .warning {
+                Button(action: {
+                    withAnimation {
+                        manager.snooze()
+                    }
+                }) {
+                    HStack(spacing: DS.xs) {
+                        Image(systemName: "hourglass.badge.plus")
+                        Text("Trì hoãn break thêm 5 phút")
+                            .fontWeight(.bold)
+                    }
+                    .font(DSFont.caption)
+                    .foregroundStyle(DS.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DS.s)
+                    .background(DS.accent.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.radiusM)
+                            .strokeBorder(DS.accent.opacity(0.3), lineWidth: DS.borderWidth)
+                    )
+                }
+                .buttonStyle(.plain)
+                .hoverEffectHelper()
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             // 5.4: Accessibility degraded-mode notice
@@ -74,6 +114,91 @@ public struct EyeRestTimerView: View {
 
             // 5.2: Start / Stop button
             startStopButton
+
+            // --- Integrated Todo List Section ---
+            Divider().background(DS.stroke)
+
+            VStack(alignment: .leading, spacing: DS.s) {
+                Text("Việc cần làm")
+                    .font(DSFont.label)
+                    .foregroundStyle(DS.textSecondary)
+
+                // Add Todo input
+                HStack(spacing: DS.s) {
+                    TextField("Thêm việc học mới...", text: $newTodoTitle)
+                        .textFieldStyle(.plain)
+                        .font(DSFont.caption)
+                        .foregroundStyle(DS.textPrimary)
+                        .padding(.horizontal, DS.s)
+                        .padding(.vertical, DS.xs + 2)
+                        .background(DS.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DS.radiusS)
+                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                        )
+                        .onSubmit {
+                            addTodo()
+                        }
+
+                    Button(action: addTodo) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(newTodoTitle.isEmpty ? DS.textTertiary : DS.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newTodoTitle.isEmpty)
+                }
+
+                // List of items
+                if manager.todoItems.isEmpty {
+                    Text("Chưa có công việc nào. Hãy thêm một mục để bắt đầu!")
+                        .font(DSFont.caption)
+                        .foregroundStyle(DS.textTertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, DS.s)
+                } else {
+                    VStack(spacing: DS.xs) {
+                        ForEach(manager.todoItems) { item in
+                            HStack(spacing: DS.s) {
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.2)) {
+                                        manager.toggleTodoItem(id: item.id)
+                                    }
+                                }) {
+                                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(item.isCompleted ? DS.playing : DS.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+
+                                Text(item.title)
+                                    .font(DSFont.caption)
+                                    .foregroundStyle(item.isCompleted ? DS.textTertiary : DS.textPrimary)
+                                    .strikethrough(item.isCompleted)
+                                    .lineLimit(1)
+                                
+                                Spacer()
+
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.2)) {
+                                        manager.deleteTodoItem(id: item.id)
+                                    }
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(DS.danger.opacity(0.7))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, DS.s)
+                            .padding(.vertical, DS.xs + 2)
+                            .background(DS.surface.opacity(0.4))
+                            .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
+                        }
+                    }
+                }
+            }
         }
         .padding(DS.m)
         .background(DS.surfaceHi)
@@ -209,5 +334,12 @@ public struct EyeRestTimerView: View {
     private func loadFromManager() {
         studyMinutesText = String(format: "%.0f", manager.studyDuration / 60)
         breakMinutesText = String(format: "%.0f", manager.breakDuration / 60)
+    }
+
+    private func addTodo() {
+        let clean = newTodoTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        manager.addTodoItem(title: clean)
+        newTodoTitle = ""
     }
 }
