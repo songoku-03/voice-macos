@@ -150,6 +150,10 @@ public final class InputBlocker: @unchecked Sendable {
         isActive = true
         installed = true
         print("InputBlocker: Event tap installed.")
+
+        // Start independent watchdog to automatically uninstall the tap after max duration (300s)
+        // to protect the user from being locked out of their system in case of app crashes/hangs.
+        startWatchdog(maxDuration: 300)
     }
 
     /// Uninstall the event tap. Idempotent.
@@ -221,8 +225,11 @@ private func inputBlockerCallback(
     let blocker = Unmanaged<InputBlocker>.fromOpaque(refcon).takeUnretainedValue()
 
     // Handle tap-disabled events (2.4).
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+    if type == .tapDisabledByTimeout {
         blocker.handleTapDisabled()
+        return Unmanaged.passRetained(event)
+    } else if type == .tapDisabledByUserInput {
+        print("InputBlocker: Event tap disabled due to user secure input (Secure Input). NOT re-enabling to respect system security.")
         return Unmanaged.passRetained(event)
     }
 
