@@ -349,4 +349,96 @@ final class AudioProcessTests: XCTestCase {
         XCTAssertEqual(rowsPrefixCompat.count, 1)
         XCTAssertEqual(rowsPrefixCompat[0].bundleID, "com.hnc.Discord")
     }
+
+    func testDeduplicationEdgeCasesIteration5() {
+        // 1. Lowercase-first App Name Hijacking (spotify vs Spotify Networking)
+        let rows1 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "spotify", bundleID: "com.spotify.client"),
+                proc(1, "Spotify Networking", bundleID: "com.spotify.client")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows1.count, 1)
+        XCTAssertEqual(rows1[0].name, "spotify")
+        
+        // 2. No-Space Helper Blacklist Bypass (spotify vs WebContent/GPUProcess/ServiceWorker)
+        let rows2 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "spotify", bundleID: "com.spotify.client"),
+                proc(1, "WebContent", bundleID: "com.spotify.client"),
+                proc(3, "GPUProcess", bundleID: "com.spotify.client"),
+                proc(4, "ServiceWorker", bundleID: "com.spotify.client")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows2.count, 1)
+        XCTAssertEqual(rows2[0].name, "spotify")
+        
+        // 3. Unrecognized Capitalized Helper Tie-breaker Hijacking (Spotify vs Spotify Networking)
+        let rows3 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Spotify", bundleID: "com.spotify.client"),
+                proc(1, "Spotify Networking", bundleID: "com.spotify.client")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows3.count, 1)
+        XCTAssertEqual(rows3[0].name, "Spotify")
+        
+        // 4. App Name Containing Dot Hijacking (Paint.NET vs process 123)
+        let rows4 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Paint.NET", bundleID: "com.paint.net"),
+                proc(1, "process 123", bundleID: "com.paint.net")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows4.count, 1)
+        XCTAssertEqual(rows4[0].name, "Paint.NET")
+        
+        // 5. Spotify vs Spot (Unrelated Shorter Prefix Name Hijacking)
+        let rows5 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Spotify", bundleID: "com.spotify.client"),
+                proc(1, "Spot", bundleID: "com.spotify.client")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows5.count, 1)
+        XCTAssertEqual(rows5[0].name, "Spotify")
+
+        // 6. Renderer's Toolkit vs renderer (Over-aggressive Helper Keyword Penalty)
+        let rows6 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Renderer's Toolkit", bundleID: "com.toolkit.renderer"),
+                proc(1, "renderer", bundleID: "com.toolkit.renderer")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows6.count, 1)
+        XCTAssertEqual(rows6[0].name, "Renderer's Toolkit")
+
+        // 7. Google Chrome vs chrome (No-Prefix Matches)
+        let rows7 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Google Chrome", bundleID: "com.google.chrome"),
+                proc(1, "chrome", bundleID: "com.google.chrome")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows7.count, 1)
+        XCTAssertEqual(rows7[0].name, "Google Chrome")
+
+        // 8. Mixed-case bundle ID matching
+        let rows8 = AudioProcess.visibleRows(
+            from: [
+                proc(2, "Spotify", bundleID: "com.Spotify.client"),
+                proc(1, "Spot", bundleID: "com.spotify.Client")
+            ],
+            tappedBundleIDs: []
+        )
+        XCTAssertEqual(rows8.count, 1)
+        XCTAssertEqual(rows8[0].name, "Spotify")
+    }
 }
