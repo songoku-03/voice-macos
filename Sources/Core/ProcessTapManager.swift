@@ -107,7 +107,7 @@ public class ProcessTapManager: @unchecked Sendable {
             let s = AudioObjectGetPropertyData(processID, &bundleAddress, 0, nil, &bundleIDSize, &bundleIDCF)
             if s == noErr, let cf = bundleIDCF {
                 let bid = cf.takeRetainedValue() as String
-                if bid == bundleID {
+                if AudioProcess.normalizeBundleID(bid) == AudioProcess.normalizeBundleID(bundleID) {
                     matches.append(processID)
                 }
             }

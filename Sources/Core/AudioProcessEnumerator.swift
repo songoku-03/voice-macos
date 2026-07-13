@@ -101,7 +101,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             
             let bundleID: String
             if status == noErr, let cf = bundleIDCF {
-                bundleID = cf.takeRetainedValue() as String
+                bundleID = AudioProcess.normalizeBundleID(cf.takeRetainedValue() as String)
             } else {
                 bundleID = ""
             }
@@ -158,7 +158,35 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             )
             
             let key = bundleID.isEmpty ? name : bundleID
-            coreAudioProcesses[key] = process
+            if let existing = coreAudioProcesses[key] {
+                let mergedIsRunningOutput = existing.isRunningOutput || isRunningOutput
+                let mergedIsRegularApp = existing.isRegularApp || isRegularApp
+                let mergedIcon = existing.icon ?? icon
+                
+                let mergedAudioObjectID: AudioObjectID
+                let mergedPid: pid_t
+                if existing.audioObjectID != 0 {
+                    mergedAudioObjectID = existing.audioObjectID
+                    mergedPid = existing.pid
+                } else {
+                    mergedAudioObjectID = processID
+                    mergedPid = pid
+                }
+                
+                let mergedName = existing.name.isEmpty ? name : existing.name
+                
+                coreAudioProcesses[key] = AudioProcess(
+                    audioObjectID: mergedAudioObjectID,
+                    pid: mergedPid,
+                    bundleID: existing.bundleID.isEmpty ? bundleID : existing.bundleID,
+                    name: mergedName,
+                    icon: mergedIcon,
+                    isRunningOutput: mergedIsRunningOutput,
+                    isRegularApp: mergedIsRegularApp
+                )
+            } else {
+                coreAudioProcesses[key] = process
+            }
         }
  
         // Merge with all running applications via NSWorkspace
@@ -169,7 +197,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 continue
             }
             
-            let key = bundleID
+            let key = AudioProcess.normalizeBundleID(bundleID)
             if let existing = coreAudioProcesses[key] {
                 var updated = existing
                 updated.isRegularApp = true
