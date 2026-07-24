@@ -275,24 +275,9 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 
     private func createAggregateDevice(tapUID: String, key: String) -> AudioObjectID? {
-        var pluginAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyPlugInForBundleID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var pluginID = kAudioObjectUnknown
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let bundleID = "com.apple.audio.CoreAudio" as CFString
-        var status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &pluginAddress,
-            UInt32(MemoryLayout<CFString>.size),
-            Unmanaged.passUnretained(bundleID).toOpaque(),
-            &size,
-            &pluginID
-        )
-        guard status == noErr && pluginID != kAudioObjectUnknown else { return nil }
-
+        // Uses the public AudioHardwareCreateAggregateDevice API. The legacy path
+        // (plugin lookup via kAudioHardwarePropertyPlugInForBundleID + 'cagd')
+        // fails with '!siz' on recent macOS.
         let subDeviceEntry: [String: Any] = [
             AggDevKey.subUID: tapUID
         ]
@@ -306,23 +291,8 @@ public class ProcessTapManager: @unchecked Sendable {
         ]
 
         var aggDevID = kAudioObjectUnknown
-        var aggAddress = AudioObjectPropertyAddress(
-            mSelector: 0x63616764, // 'cagd' — kAudioPlugInCreateAggregateDevice
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let dictRef = description as CFDictionary
-        status = AudioObjectGetPropertyData(
-            pluginID,
-            &aggAddress,
-            UInt32(MemoryLayout<CFDictionary>.size),
-            Unmanaged.passUnretained(dictRef).toOpaque(),
-            &size,
-            &aggDevID
-        )
-
-        if status != noErr {
+        let status = AudioHardwareCreateAggregateDevice(description as CFDictionary, &aggDevID)
+        guard status == noErr && aggDevID != kAudioObjectUnknown else {
             print("ProcessTapManager: Failed to create aggregate device: \(status)")
             return nil
         }

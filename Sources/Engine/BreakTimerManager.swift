@@ -131,7 +131,16 @@ public final class BreakTimerManager {
 
     // MARK: Injected dependencies
 
-    public var audioEngineManager: AudioEngineManager = .shared
+    private var _customAudioEngineManager: AudioEngineManager?
+
+    public var audioEngineManager: AudioEngineManager {
+        get {
+            _customAudioEngineManager ?? .shared
+        }
+        set {
+            _customAudioEngineManager = newValue
+        }
+    }
 
     public weak var inputBlocker: InputBlockerProtocol?
     public weak var overlayController: BreakOverlayControllerProtocol?

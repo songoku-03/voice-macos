@@ -15,20 +15,6 @@ public protocol BreakOverlayControllerProtocol: AnyObject {
     @MainActor func showOverlays()
     @MainActor func hideOverlays()
 }
-
-// MARK: - Event classification (2.1)
-// Pure function — no alloc, no locks, no @MainActor. Testable in isolation.
-
-/// Determines whether a keyboard event should be suppressed during a break.
-/// Returns `true` if the event should be swallowed.
-///
-/// Suppressed: system escape shortcuts that could let the user leave the break
-///   • Cmd-Tab / Cmd-Shift-Tab  (app switcher)
-///   • Mission Control key (F3 / kVK_F3 on some keyboards, or via modifier)
-///   • Cmd-Q, Cmd-W, Cmd-H, Cmd-` (quit / close / hide / next-window)
-///   • Escape — prevents bare Escape from invoking some system dialogs
-///
-/// NOT suppressed: mouse events (overlay relies on mouse for the Skip button).
 func shouldSuppressEvent(keycode: CGKeyCode, flags: CGEventFlags) -> Bool {
     let cmd = flags.contains(.maskCommand)
     let shift = flags.contains(.maskShift)

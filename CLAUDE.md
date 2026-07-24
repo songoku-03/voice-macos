@@ -51,21 +51,27 @@ All per-app state in `AudioEngineManager` (volume, mute, routing, EQ) is **keyed
 
 ### State, persistence, and device-following conventions
 
-- **`Engine/PresetStore`** (`@MainActor @Observable`, `.shared`) is the SwiftUI-observed source of truth for presets. It delegates all disk I/O to the **`Engine/PresetRepository` actor** (off the main thread; see the `swift-actor-persistence` skill). Saves are fire-and-forget but **chained through `pendingSave`** so rapid mutations land on disk in order; `flush()` awaits the in-flight write (used at termination and in tests). `FileStoring` is injected so tests use `InMemoryFileStore` instead of touching disk. Presets persist to `~/Library/Application Support/SoundsSource/presets.json`.
+- **`Engine/PresetStore`** (`@MainActor @Observable`, `.shared`) is the SwiftUI-observed source of truth for presets. It delegates all disk I/O to the **`Engine/PresetRepository` actor** (off the main thread). Saves are fire-and-forget but **chained through `pendingSave`** so rapid mutations land on disk in order; `flush()` awaits the in-flight write (used at termination and in tests). `FileStoring` is injected so tests use `InMemoryFileStore` instead of touching disk. Presets persist to `~/Library/Application Support/SoundsSource/presets.json`.
 - **Device following:** `selectedDeviceID` follows the system default output until the user makes an explicit pick (`followsSystemDefault` flips to false). The `_suppressFollowReset` flag lets internal listeners update `selectedDeviceID` *without* counting as a user pick. Don't remove these flags without understanding the Core Audio property listeners in `setupListeners()`.
 - **Helper-process resolution:** Browsers (Chrome, Cốc Cốc, Edge) and Electron apps (Discord) emit audio from child *Helper* processes with no `NSRunningApplication`. `Core/AudioProcessEnumerator.resolveOwningApp` walks the parent-PID chain (sysctl) and falls back to bundle-ID prefix matching so the UI shows the real parent app's name + icon.
+
+### The eye-rest break timer (second subsystem, independent of audio)
+
+- **`Engine/BreakTimerManager`** (`@Observable @MainActor`) is the state machine driving `idle → studying → warning → breaking`. It uses **wall-clock absolute deadlines** (not accumulated ticks) so sleep/wake doesn't corrupt timing. Configuration, daily session counts, and todo items persist via `UserDefaults` under `btm_*` keys.
+- **`Core/InputBlocker`** installs a `CGEventTap` during breaks that swallows escape shortcuts (Cmd-Tab, Cmd-Q, Escape, Mission Control) but **never mouse events** — the overlay's Skip button needs clicks. `shouldSuppressEvent` is a pure function kept free of allocation/locks so it's testable in isolation. The tap requires the **Accessibility permission**: `checkAccessibilityPermission()` (silent, safe to poll) vs `promptAccessibilityPermission()` (shows the system dialog — call only on user intent). A watchdog re-installs the tap if the system disables it, and it respects secure-input mode.
+- **`UI/BreakOverlayWindow`** is a borderless `.screenSaver`-level `NSPanel` per screen (`canJoinAllSpaces` + `fullScreenAuxiliary` so it covers fullscreen apps); it overrides `canBecomeKey` so the Skip button works while the event tap is live. The protocols (`InputBlockerProtocol`, `BreakOverlayControllerProtocol`) live in Core so Engine can depend on them without importing UI.
 
 ### Conventions & gotchas
 
 - **Hard-coded Core Audio four-char-code selectors.** Many `AudioObjectPropertySelector`s are written as raw hex (e.g. `0x70727323` = `'prs#'`, `'pbid'`, `'tuid'`, `'tfmt'`, `'id2p'`) with the FourCC in a comment, because the named SDK constants don't reliably resolve under the Swift 6 / Command Line Tools toolchain. Follow that pattern rather than assuming a constant exists.
 - **Teardown order is load-bearing.** In `ProcessTapManager.stopTapping`, the aggregate device must be stopped/destroyed *before* the tap (`AudioHardwareDestroyProcessTap`) — the aggregate holds a reference to the tap. Reordering causes a dangling HAL reference.
 - **Concurrency model:** real-time callbacks and Core Audio bridges use `@unchecked Sendable` and `nonisolated(unsafe)` deliberately. Code on the IOProc / render thread must not allocate, lock, or call back into `@MainActor` state.
-- **Known wart:** `SoundsSource/AppDelegate.swift` redirects stdout/stderr to a **hard-coded absolute log path** (`/Users/mac/Documents/GitHub/soundssource/app.log`). If you touch `applicationDidFinishLaunching`, this is worth fixing/parameterizing rather than copying.
+- **Known wart:** `SoundsSource/AppDelegate.swift` redirects stdout/stderr to a **hard-coded absolute log path** (`/Users/mac/Documents/GitHub/voice-macos/app.log`). If you touch `applicationDidFinishLaunching`, this is worth fixing/parameterizing rather than copying.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **voice-macos** (2039 symbols, 5152 relationships, 138 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **voice-macos** (2036 symbols, 5152 relationships, 138 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
