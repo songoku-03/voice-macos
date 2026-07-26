@@ -1,17 +1,20 @@
-import XCTest
+import Testing
 import ApplicationServices
+import AppKit
+import AVFoundation
+import CoreAudio
 @testable import Core
 @testable import Engine
 
 @MainActor
-final class BreakTimerManagerTests: XCTestCase {
+@Suite struct BreakTimerManagerTests {
     
     // MARK: - Event classification tests
     
-    func testEventClassification() {
+    @Test func eventClassification() {
         func check(_ desc: String, keycode: CGKeyCode, flags: CGEventFlags = [], expected: Bool) {
             let result = shouldSuppressEvent(keycode: keycode, flags: flags)
-            XCTAssertEqual(result, expected, "FAIL [\(desc)]")
+            #expect(result == expected, "FAIL [\(desc)]")
         }
 
         // Suppressed shortcuts
@@ -45,99 +48,99 @@ final class BreakTimerManagerTests: XCTestCase {
         return m
     }
 
-    func testStartsIdle() {
+    @Test func startsIdle() {
         _ = withFreshManager { m in
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
             m.start()
-            XCTAssertEqual(m.phase, .studying)
+            #expect(m.phase == .studying)
         }
     }
 
-    func testStopFromStudyingGoesToIdle() {
+    @Test func stopFromStudyingGoesToIdle() {
         _ = withFreshManager { m in
             m.start()
             m.stop()
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testStopFromIdleIsNoOp() {
+    @Test func stopFromIdleIsNoOp() {
         _ = withFreshManager { m in
             m.stop()
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testDoubleStartIsNoOp() {
+    @Test func doubleStartIsNoOp() {
         _ = withFreshManager { m in
             m.start()
             let remaining1 = m.remaining
             m.start()
-            XCTAssertEqual(m.remaining, remaining1)
-            XCTAssertEqual(m.phase, .studying)
+            #expect(m.remaining == remaining1)
+            #expect(m.phase == .studying)
         }
     }
 
-    func testSkipFromIdleIsNoOp() {
+    @Test func skipFromIdleIsNoOp() {
         _ = withFreshManager { m in
             m.skip()
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testEndBreakWithTimeoutTriggersAutoLoop() {
+    @Test func endBreakWithTimeoutTriggersAutoLoop() {
         _ = withFreshManager { m in
             m.start()
             m.endBreak(reason: .timeout)
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testEndBreakWithStoppedDoesNotAutoLoop() {
+    @Test func endBreakWithStoppedDoesNotAutoLoop() {
         _ = withFreshManager { m in
             m.start()
             m.endBreak(reason: .stopped)
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testWakeAfterSleepRecomputes() {
+    @Test func wakeAfterSleepRecomputes() {
         _ = withFreshManager(5, 10) { m in
             m.start()
-            XCTAssertEqual(m.phase, .studying)
+            #expect(m.phase == .studying)
             m.stop()
-            XCTAssertEqual(m.phase, .idle)
+            #expect(m.phase == .idle)
         }
     }
 
-    func testTodoListOperations() {
+    @Test func todoListOperations() {
         _ = withFreshManager { m in
             // Clear initially
             m.todoItems = []
-            XCTAssertTrue(m.todoItems.isEmpty)
+            #expect(m.todoItems.isEmpty)
 
             // Add item
             m.addTodoItem(title: "Learn SwiftUI")
-            XCTAssertEqual(m.todoItems.count, 1)
-            XCTAssertEqual(m.todoItems[0].title, "Learn SwiftUI")
-            XCTAssertFalse(m.todoItems[0].isCompleted)
+            #expect(m.todoItems.count == 1)
+            #expect(m.todoItems[0].title == "Learn SwiftUI")
+            #expect(!m.todoItems[0].isCompleted)
 
             // Toggle item
             let id = m.todoItems[0].id
             m.toggleTodoItem(id: id)
-            XCTAssertTrue(m.todoItems[0].isCompleted)
+            #expect(m.todoItems[0].isCompleted)
 
             // Toggle back
             m.toggleTodoItem(id: id)
-            XCTAssertFalse(m.todoItems[0].isCompleted)
+            #expect(!m.todoItems[0].isCompleted)
 
             // Delete item
             m.deleteTodoItem(id: id)
-            XCTAssertTrue(m.todoItems.isEmpty)
+            #expect(m.todoItems.isEmpty)
         }
     }
 
-    func testSnoozeFromWarning() {
+    @Test func snoozeFromWarning() {
         _ = withFreshManager(5, 10) { m in
             m.start()
             // Set phase manually to warning to test snooze
@@ -150,11 +153,11 @@ final class BreakTimerManagerTests: XCTestCase {
             // We can check snooze transitions
             // To simulate being in warning phase, we can call enterWarning() or snooze()
             // Let's test snooze directly
-            XCTAssertEqual(m.phase, .studying)
+            #expect(m.phase == .studying)
         }
     }
 
-    func testCompletedSessionsCounter() {
+    @Test func completedSessionsCounter() {
         _ = withFreshManager(5, 10) { m in
             let initial = m.completedSessionsToday
             m.completedSessionsToday = initial
@@ -164,11 +167,11 @@ final class BreakTimerManagerTests: XCTestCase {
             // Directly call endBreak with reason .timeout (simulates timer end)
             m.endBreak(reason: .timeout)
             
-            XCTAssertEqual(m.completedSessionsToday, initial + 1)
+            #expect(m.completedSessionsToday == initial + 1)
         }
     }
 
-    func testUpdatePreBreakVolumeDuringBreak() {
+    @Test func updatePreBreakVolumeDuringBreak() {
         let m = BreakTimerManager()
         m.studyDuration = 0.001
         m.breakDuration = 10
@@ -181,17 +184,17 @@ final class BreakTimerManagerTests: XCTestCase {
             object: nil
         )
         
-        XCTAssertEqual(m.phase, .breaking)
+        #expect(m.phase == .breaking)
         
         m.updatePreBreakVolume(bundleID: "com.apple.finder", volume: 0.75)
         
         let dict = UserDefaults.standard.dictionary(forKey: "btm_preBreakVolumes") as? [String: Double]
-        XCTAssertEqual(dict?["com.apple.finder"], 0.75)
+        #expect(dict?["com.apple.finder"] == 0.75)
         
         m.stop()
     }
 
-    func testDuckingAndRestoreVolume() {
+    @Test func duckingAndRestoreVolume() {
         class MockAudioEngineManager: AudioEngineManager {
             var lastDirectVolume: [String: Float] = [:]
             var lastSetVolume: [String: Float] = [:]
@@ -251,18 +254,18 @@ final class BreakTimerManagerTests: XCTestCase {
             object: nil
         )
         
-        XCTAssertEqual(m.phase, .breaking)
+        #expect(m.phase == .breaking)
         
         // Node volume should have ducked to 10% (0.08)
-        XCTAssertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8) * Float(0.1))
+        #expect(mockEngine.lastDirectVolume[bundleID] == Float(0.8) * Float(0.1))
         // Persistent/target volume in settings should STILL be 0.8 (Not ducked!)
-        XCTAssertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
+        #expect(mockEngine.getVolume(bundleID: bundleID) == Float(0.8))
         
         // Stop break/timer
         m.stop()
         
         // Node volume should have restored to 0.8
-        XCTAssertEqual(mockEngine.lastDirectVolume[bundleID], Float(0.8))
-        XCTAssertEqual(mockEngine.getVolume(bundleID: bundleID), Float(0.8))
+        #expect(mockEngine.lastDirectVolume[bundleID] == Float(0.8))
+        #expect(mockEngine.getVolume(bundleID: bundleID) == Float(0.8))
     }
 }

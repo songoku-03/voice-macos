@@ -90,6 +90,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         for bundleID in keys {
             AudioEngineManager.shared.stopAppTapping(bundleID: bundleID)
         }
+        // stopAppTapping snapshotted each node's EQ state; wait (bounded) for the
+        // chained app-settings write so the last session's state lands on disk.
+        AudioEngineManager.shared.flushAppSettingsBeforeTermination()
         AudioEngineManager.shared.teardown()
         breakTimerManager?.teardownOnTerminate()
     }

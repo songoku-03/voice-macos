@@ -1,23 +1,26 @@
 import Foundation
 import AppKit
 import CoreAudio
+@testable import Core
 
 // Re-declare or import Core if we're compiling standalone.
 // Since we are compiling both AudioProcess.swift and this file together,
 // they will be in the same module, so we don't need "@testable import Core"
 // if we compile them together.
 
-@main
+import Testing
+
+@Suite
 struct EmpiricalAudioProcessTests {
-    static func main() {
+    @Test func empiricalTests() {
         print("=== Starting Empirical Tests for AudioProcess ===")
         
-        testTransitiveGroupingConflict()
-        testOverlappingGroupsWithHelpers()
-        testHeuristicTotalOrder()
-        testEdgeCases()
-        testNonLatinLocalizedNameBug()
-        testPerformanceStress()
+        Self.testTransitiveGroupingConflict()
+        Self.testOverlappingGroupsWithHelpers()
+        Self.testHeuristicTotalOrder()
+        Self.testEdgeCases()
+        Self.testNonLatinLocalizedNameBug()
+        Self.testPerformanceStress()
         
         print("=== All Empirical Tests Completed Successfully ===")
     }

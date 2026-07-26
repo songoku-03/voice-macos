@@ -7,7 +7,9 @@ public struct AppControlsView: View {
     let bundleID: String
     let eqController: EQController
 
-    @State private var isEQBypassed = false
+    private var isEQBypassed: Bool {
+        AudioEngineManager.shared.getEQBypass(bundleID: bundleID)
+    }
 
     private var volume: Float {
         AudioEngineManager.shared.getVolume(bundleID: bundleID)
@@ -106,19 +108,17 @@ public struct AppControlsView: View {
                 .buttonStyle(.plain)
             }
 
-            // EQ curve
-            if !isEQBypassed {
-                EQCurveEditor(
-                    eqController: eqController,
-                    spectrum: AudioEngineManager.shared.activeNodes[bundleID]?.spectrumTap
-                )
-                .transition(.opacity)
-            }
+            // EQ curve — stays visible when bypassed, but dimmed and inert so the
+            // user keeps their curve in view while EQ is off.
+            EQCurveEditor(
+                eqController: eqController,
+                spectrum: AudioEngineManager.shared.activeNodes[bundleID]?.spectrumTap
+            )
+            .opacity(isEQBypassed ? 0.4 : 1.0)
+            .allowsHitTesting(!isEQBypassed)
         }
         .padding(.vertical, DS.s)
-        .onAppear {
-            self.isEQBypassed = eqController.avAudioUnit.bypass
-        }
+        .animation(.easeInOut(duration: 0.2), value: isEQBypassed)
     }
 
     private func toggleMute() {
@@ -126,8 +126,7 @@ public struct AppControlsView: View {
     }
 
     private func toggleEQBypass() {
-        withAnimation(.easeInOut(duration: 0.2)) { isEQBypassed.toggle() }
-        eqController.setBypass(isEQBypassed)
+        AudioEngineManager.shared.setEQBypass(bundleID: bundleID, bypassed: !isEQBypassed)
     }
 }
 

@@ -139,8 +139,18 @@ public class AudioEngineManager: @unchecked Sendable {
     // Configured output routing: Bundle ID -> AudioDeviceID (kAudioObjectUnknown = Default)
     public private(set) var appOutputDevices: [String: AudioDeviceID] = [:]
     
-    // Cached preset settings for bundle IDs that are not currently running
+    // Live per-app EQ settings (curve + bypass), keyed by bundle ID. Snapshotted
+    // from the node before every detach and persisted to app-settings.json so
+    // state survives re-taps and app restarts.
     private var cachedAppSettings: [String: EQPresetData] = [:]
+
+    // Observable EQ bypass flags the UI binds to (mirrors isMuted). Every write
+    // path keeps this in sync with cachedAppSettings[bundleID].bypass.
+    public private(set) var eqBypass: [String: Bool] = [:]
+
+    @ObservationIgnored private let appSettingsRepository: AppSettingsRepository
+    // Chains fire-and-forget settings saves so they land on disk in call order.
+    @ObservationIgnored private var pendingSettingsSave: Task<Void, Never>?
     
     #if DEBUG
     public var tapProvider: ((String, pid_t) -> ([RingBuffer], AudioStreamBasicDescription)?)? = nil
@@ -150,7 +160,12 @@ public class AudioEngineManager: @unchecked Sendable {
     private let selectorDefaultOutput = kAudioHardwarePropertyDefaultOutputDevice
     private let selectorDevicesList = kAudioHardwarePropertyDevices
     
-    public init() {
+    public init(fileStore: FileStoring = DefaultFileStore(), appSettingsFileURL: URL = AppSettingsRepository.defaultFileURL()) {
+        self.appSettingsRepository = AppSettingsRepository(fileStore: fileStore, fileURL: appSettingsFileURL)
+        // Synchronous load so cached EQ state exists before setupEngine resumes taps.
+        let persisted = AppSettingsRepository.loadSynchronously(fileStore: fileStore, fileURL: appSettingsFileURL)
+        self.cachedAppSettings = persisted
+        self.eqBypass = persisted.mapValues { $0.bypass }
         setupEngine()
         setupListeners()
     }
@@ -317,6 +332,13 @@ public class AudioEngineManager: @unchecked Sendable {
             busVolumes[bundleID] = cached.volume
         }
 
+        // Bypass may have been toggled while the app wasn't tapped; the dict wins.
+        if let bypassed = eqBypass[bundleID] {
+            appNode.eqController.setBypass(bypassed)
+        } else {
+            eqBypass[bundleID] = appNode.eqController.avAudioUnit.bypass
+        }
+
         // Apply volume directly to the app node
         let vol = busVolumes[bundleID] ?? 1.0
         let muted = isMuted[bundleID] ?? false
@@ -338,7 +360,11 @@ public class AudioEngineManager: @unchecked Sendable {
         activePIDs.removeValue(forKey: bundleID)
         guard let appNode = activeNodes.removeValue(forKey: bundleID) else { return }
         guard let route = appBusRoutes.removeValue(forKey: bundleID) else { return }
-        
+
+        // Snapshot EQ state (curve + bypass) before the node is detached so a
+        // re-tap — or the next launch — restores it (mirrors volume/mute).
+        snapshotEQSettings(bundleID: bundleID, from: appNode)
+
         // Safety: Immediately set volume to 0.0 before disconnecting/detaching
         appNode.volume = 0.0
         
@@ -465,6 +491,9 @@ public class AudioEngineManager: @unchecked Sendable {
         let oldVol = busVolumes[bundleID] ?? 1.0
         let oldPreset = appNode.eqController.getPresetData(volume: oldVol)
         newAppNode.eqController.applyPresetData(oldPreset)
+        cachedAppSettings[bundleID] = oldPreset
+        eqBypass[bundleID] = oldPreset.bypass
+        persistAppSettings()
         
         let muted = isMuted[bundleID] ?? false
         newAppNode.volume = muted ? 0.0 : oldVol
@@ -512,6 +541,69 @@ public class AudioEngineManager: @unchecked Sendable {
     public func getMute(bundleID: String) -> Bool {
         return isMuted[bundleID] ?? false
     }
+
+    // EQ Bypass Control (EQ ON/OFF). Single write path — UI and engine code must
+    // go through here so the observable dict, the live node, and the persisted
+    // cache never drift apart.
+    public func setEQBypass(bundleID: String, bypassed: Bool) {
+        eqBypass[bundleID] = bypassed
+        if let appNode = activeNodes[bundleID] {
+            appNode.eqController.setBypass(bypassed)
+        }
+        if let cached = cachedAppSettings[bundleID] {
+            cachedAppSettings[bundleID] = EQPresetData(bands: cached.bands, bypass: bypassed, volume: cached.volume)
+        } else {
+            // No curve yet — persist a flat curve carrying the bypass flag so the
+            // toggle still survives a restart.
+            cachedAppSettings[bundleID] = EQPresetData(bands: EQPresetData.flat.bands, bypass: bypassed, volume: getVolume(bundleID: bundleID))
+        }
+        persistAppSettings()
+    }
+
+    public func getEQBypass(bundleID: String) -> Bool {
+        return eqBypass[bundleID] ?? false
+    }
+
+    private func snapshotEQSettings(bundleID: String, from appNode: AppAudioNode) {
+        let data = appNode.eqController.getPresetData(volume: getVolume(bundleID: bundleID))
+        cachedAppSettings[bundleID] = data
+        eqBypass[bundleID] = data.bypass
+        persistAppSettings()
+    }
+
+    // Fire-and-forget save, chained like PresetStore.pendingSave. Task.detached
+    // (not Task) so the chain never touches the main actor —
+    // flushAppSettingsBeforeTermination blocks the main thread waiting on it.
+    private func persistAppSettings() {
+        let snapshot = cachedAppSettings
+        let previous = pendingSettingsSave
+        pendingSettingsSave = Task.detached { [repository = appSettingsRepository] in
+            await previous?.value
+            do {
+                try await repository.save(snapshot)
+            } catch {
+                print("AudioEngineManager: Failed to save app settings: \(error)")
+            }
+        }
+    }
+
+    /// Await the in-flight settings write (tests and async contexts).
+    public func flushAppSettings() async {
+        await pendingSettingsSave?.value
+    }
+
+    /// Bounded synchronous wait for the in-flight settings write. Safe from
+    /// applicationWillTerminate: the save chain runs detached off the main actor,
+    /// so blocking the main thread here cannot deadlock it.
+    public func flushAppSettingsBeforeTermination() {
+        guard let pending = pendingSettingsSave else { return }
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            await pending.value
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 2.0)
+    }
     
     public func setNodeVolumeDirect(bundleID: String, volume: Float) {
         if let appNode = activeNodes[bundleID] {
@@ -543,17 +635,24 @@ public class AudioEngineManager: @unchecked Sendable {
         
         for (bundleID, appPresetData) in preset.appSettings {
             cachedAppSettings[bundleID] = appPresetData
-            
+            eqBypass[bundleID] = appPresetData.bypass
+
             if let appNode = activeNodes[bundleID] {
                 appNode.eqController.applyPresetData(appPresetData)
                 setVolume(bundleID: bundleID, volume: appPresetData.volume)
             }
         }
+        persistAppSettings()
     }
     
     private func applyDefaultPreset() {
-        if let def = PresetStore.shared.defaultPreset {
-            loadPreset(name: def.name)
+        // Launch-time seeding only: bundle IDs with persisted live state keep it —
+        // the state saved at last quit wins over the default preset on relaunch.
+        // No nodes are active this early, so there is nothing to apply live.
+        guard let def = PresetStore.shared.defaultPreset else { return }
+        for (bundleID, data) in def.appSettings where cachedAppSettings[bundleID] == nil {
+            cachedAppSettings[bundleID] = data
+            eqBypass[bundleID] = data.bypass
         }
     }
     

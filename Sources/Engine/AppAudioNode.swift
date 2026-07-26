@@ -101,7 +101,6 @@ public class AppAudioNode: @unchecked Sendable {
         // Initialize EQ node
         self.eqNode = AVAudioUnitEQ(numberOfBands: 10)
         self.eqNode.bypass = false
-        self.eqNode.bypass = false
         self.eqController = EQController(avAudioUnit: self.eqNode)
         self.eqController.setFlat()
         

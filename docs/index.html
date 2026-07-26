@@ -1,1317 +1,121 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Minh Thw ☁️ — Điều khiển âm thanh từng ứng dụng macOS</title>
+  <title>SoundsSource — Điều khiển âm thanh từng ứng dụng macOS</title>
   <meta name="description" content="Capture, EQ, mute và định tuyến âm thanh của bất kỳ ứng dụng macOS nào độc lập. Tiện ích menu bar miễn phí và mã nguồn mở." />
   
-  <!-- Modern Fonts -->
+  <!-- Modern Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Outfit', 'sans-serif'],
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
 
   <style>
-    :root {
-      --primary: #FFE15D;
-      --primary-rgb: 255, 225, 93;
-      --secondary: #FF5E97;
-      --secondary-rgb: 255, 94, 151;
-      --bg: #171520;
-      --bg-soft: #221F32;
-      --surface-hi: #2E2A44;
-      --bg-glass: rgba(34, 31, 50, 0.95);
-      --text: #FAFAFD;
-      --text-dim: #A39FB8;
-      --text-tertiary: #6A6482;
-      --border: #0D0C13;
-      --border-glow: rgba(255, 94, 151, 0.16);
-      --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: 'JetBrains Mono', "SF Mono", Menlo, monospace;
-      
-      /* Neobrutalist details */
-      --stroke: #0D0C13;
-      --border-width: 2px;
-      --shadow-color: #0D0C13;
-      --shadow-offset: 3px;
-      --card-bg: #29253B;
-      --card-bg-hover: #342F4B;
-      --card-bg-active: #413B5E;
-      --playing: #54E7A2;
-      --danger: #FF5252;
-      --warning: #FFAC38;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    /* Scrollbar Styling */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: var(--bg);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #1b2330;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #273449;
-    }
-
-    body {
-      font-family: var(--font-sans);
-      background-color: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-      background-image: 
-        radial-gradient(circle at 10% 15%, rgba(255, 94, 151, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 90% 85%, rgba(255, 225, 93, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 50% 50%, rgba(22, 21, 32, 0.5) 0%, transparent 100%);
-    }
-
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    /* Glassmorphic Utilities */
-    .glass-card {
-      background: var(--card-bg);
-      border: var(--border-width) solid var(--stroke);
-      border-radius: 16px;
-      box-shadow: var(--shadow-offset) var(--shadow-offset) 0 0 var(--shadow-color);
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
-    }
-    .glass-card:hover {
-      transform: translate(-1px, -1px);
-      box-shadow: calc(var(--shadow-offset) + 1px) calc(var(--shadow-offset) + 1px) 0 0 var(--shadow-color);
-      border-color: var(--secondary);
-    }
-
-    /* Navbar */
-    nav {
-      height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: rgba(7, 9, 14, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .nav-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      text-decoration: none;
-      color: var(--text);
-    }
-    .nav-logo img {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-    }
-    .nav-logo span {
-      font-family: var(--font-display);
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-    }
-    .nav-logo span accent {
-      color: var(--primary);
-    }
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-    }
-    .nav-links a {
-      color: var(--text-dim);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
-      transition: color 0.2s ease;
-    }
-    .nav-links a:hover {
-      color: var(--primary);
-    }
-    .nav-git-btn {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: 8px;
-      background: var(--bg-soft);
-      border: 1px solid var(--border);
-      color: var(--text) !important;
-      font-weight: 600 !important;
-      transition: border-color 0.2s ease, background 0.2s ease;
-    }
-    .nav-git-btn:hover {
-      border-color: var(--primary);
-      background: rgba(0, 242, 254, 0.05);
-    }
-
-    /* Hero Section */
-    .hero {
-      padding: 80px 0 60px;
-      text-align: center;
-      position: relative;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      background: rgba(0, 242, 254, 0.08);
-      border: 1px solid rgba(0, 242, 254, 0.2);
-      color: var(--primary);
-      font-size: 13px;
-      font-weight: 600;
-      border-radius: 20px;
-      margin-bottom: 24px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .hero h1 {
-      font-family: var(--font-display);
-      font-size: 54px;
-      font-weight: 900;
-      line-height: 1.15;
-      letter-spacing: -0.03em;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, #fff 40%, rgba(255,255,255,0.7) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .hero h1 accent {
-      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .hero p.tagline {
-      max-width: 680px;
-      margin: 0 auto 36px;
-      font-size: 18px;
-      color: var(--text-dim);
-      line-height: 1.6;
-    }
-    .hero-ctas {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 28px;
-      font-size: 16px;
-      font-weight: 700;
-      border-radius: 12px;
-      text-decoration: none;
-      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, opacity 0.2s ease;
-      cursor: pointer;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--primary) 0%, #ffd000 100%);
-      color: var(--bg);
-      border: var(--border-width) solid var(--stroke);
-      box-shadow: var(--shadow-offset) var(--shadow-offset) 0 0 var(--shadow-color);
-    }
-    .btn-primary:hover {
-      transform: translate(-1px, -1px);
-      box-shadow: calc(var(--shadow-offset) + 1px) calc(var(--shadow-offset) + 1px) 0 0 var(--shadow-color);
-    }
-    .btn-primary:active {
-      transform: translate(1px, 1px);
-      box-shadow: calc(var(--shadow-offset) - 1px) calc(var(--shadow-offset) - 1px) 0 0 var(--shadow-color);
-    }
-    .btn-secondary {
-      background: var(--bg-soft);
-      border: var(--border-width) solid var(--stroke);
-      color: var(--text);
-      box-shadow: var(--shadow-offset) var(--shadow-offset) 0 0 var(--shadow-color);
-    }
-    .btn-secondary:hover {
-      background: var(--surface-hi);
-      transform: translate(-1px, -1px);
-      box-shadow: calc(var(--shadow-offset) + 1px) calc(var(--shadow-offset) + 1px) 0 0 var(--shadow-color);
-    }
-    .hero .requirements {
-      font-size: 13px;
-      color: var(--text-dim);
-    }
-
-    /* Interactive Desktop Showcase */
-    .showcase-container {
-      margin: 40px auto 80px;
-      max-width: 860px;
-      perspective: 1000px;
-    }
-    .mac-desktop {
-      width: 100%;
-      border-radius: 20px;
-      overflow: hidden;
-      border: var(--border-width) solid var(--stroke);
-      background: radial-gradient(circle at 30% 30%, #221f32 0%, #171520 100%);
-      box-shadow: 6px 6px 0 0 var(--stroke);
-      position: relative;
-      aspect-ratio: 16 / 11;
-    }
+    /* Custom Scrollbar & Interactive Helpers */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #080C14; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
     
-    /* Wallpaper graphics */
-    .mac-wallpaper-glow {
-      position: absolute;
-      top: -20%; left: -20%;
-      width: 140%; height: 140%;
-      background: 
-        radial-gradient(circle at 30% 25%, rgba(157, 78, 221, 0.18) 0%, transparent 40%),
-        radial-gradient(circle at 75% 65%, rgba(0, 242, 254, 0.15) 0%, transparent 45%);
-      z-index: 1;
-      pointer-events: none;
-    }
-
-    /* Menu bar */
-    .mac-menubar {
-      height: 26px;
-      background: rgba(14, 18, 26, 0.55);
-      backdrop-filter: blur(15px);
-      -webkit-backdrop-filter: blur(15px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 16px;
-      font-size: 12px;
-      font-weight: 500;
-      color: rgba(255, 255, 255, 0.95);
-      z-index: 10;
-      position: relative;
-      user-select: none;
-    }
-    .menubar-left {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .menubar-left span.apple-icon {
-      font-size: 14px;
-    }
-    .menubar-left span.menu-item {
-      font-weight: 600;
-    }
-    .menubar-right {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .menubar-app-trigger {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .menubar-app-trigger.active {
-      background: rgba(255, 255, 255, 0.12);
-    }
-    .menubar-app-trigger svg {
-      width: 15px;
-      height: 15px;
-      fill: currentColor;
-    }
-
-    /* Popover Simulator */
-    .mac-popover {
-      position: absolute;
-      top: 32px;
-      right: 14px;
-      width: 360px;
-      max-height: calc(100% - 46px);
-      border-radius: 22px;
-      border: var(--border-width) solid var(--stroke);
-      background: rgba(34, 31, 50, 0.96);
-      box-shadow: 4px 4px 0 0 var(--stroke);
-      z-index: 20;
-      display: flex;
-      flex-direction: column;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Nunito", "Outfit", sans-serif;
-      overflow: hidden;
-      opacity: 0;
-      transform: translateY(-8px) scale(0.98);
-      pointer-events: none;
-      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .mac-popover.open {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      pointer-events: all;
-    }
-
-    /* Popover Header */
-    .popover-header {
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--bg-soft);
-      border-bottom: var(--border-width) solid var(--stroke);
-    }
-    .popover-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .brand-title {
-      font-size: 14px;
-      font-weight: 900;
-      color: var(--text-primary);
-      letter-spacing: -0.01em;
-      font-family: var(--font-display);
-    }
-    .preset-selector {
-      background: var(--bg-soft);
-      border: 2px solid var(--stroke);
-      border-radius: 8px;
-      color: #fff;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 18px 2px 6px;
-      cursor: pointer;
-      outline: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 4px center;
-      background-size: 12px;
-      min-width: 85px;
-      box-shadow: 2px 2px 0 0 var(--stroke);
-    }
-    .preset-selector:hover {
-      background-color: var(--surface-hi);
-    }
-    .device-picker {
-      background: var(--bg-soft);
-      border: 2px solid var(--stroke);
-      border-radius: 8px;
-      color: #eaeaea;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 18px 2px 6px;
-      cursor: pointer;
-      outline: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 4px center;
-      background-size: 12px;
-      max-width: 140px;
-      box-shadow: 2px 2px 0 0 var(--stroke);
-    }
-    .device-picker:hover {
-      background-color: var(--surface-hi);
-    }
-
-    /* Popover Content (App List) */
-    .popover-list {
-      flex: 1;
-      overflow-y: auto;
-      max-height: 420px;
-      padding: 12px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    
-    .app-row {
-      display: flex;
-      flex-direction: column;
-      background: var(--card-bg);
-      border: var(--border-width) solid var(--stroke);
-      border-radius: 16px;
-      box-shadow: var(--shadow-offset) var(--shadow-offset) 0 0 var(--shadow-color);
-      margin: 4px 16px 8px 16px;
-      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-    }
-    .app-row:hover {
-      background: var(--card-bg-hover);
-    }
-    .app-row.expanded {
-      background: var(--card-bg-active);
-    }
-    .app-row.disabled {
-      opacity: 0.65;
-      box-shadow: 1px 1px 0 0 var(--stroke);
-    }
-
-    .row-header {
-      display: flex;
-      align-items: center;
-      padding: 10px 12px;
-      gap: 10px;
-      cursor: default;
-      user-select: none;
-    }
-    .app-icon {
-      width: 22px;
-      height: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 8px;
-      border: 1px solid var(--stroke);
-      overflow: hidden;
-      background: var(--surface-hi);
-    }
-    .app-icon svg {
-      width: 100%;
-      height: 100%;
-    }
-    .app-info {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex: 1;
-    }
-    .app-name {
-      font-size: 13px;
-      font-weight: 700;
-      color: #fff;
-      font-family: var(--font-display);
-    }
-    .app-status {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--playing);
-      display: none;
-      box-shadow: 0 0 6px var(--playing);
-    }
-    .app-row.playing .app-status {
-      display: block;
-    }
-
-    /* VU Meter */
-    .vu-meter {
-      display: flex;
-      gap: 2px;
-      align-items: flex-end;
-      width: 31px;
-      height: 12px;
-    }
-    .vu-bar {
-      width: 3.5px;
-      height: 2px;
-      background: rgba(13, 12, 19, 0.4);
-      border-radius: 1.5px;
-      transition: height 0.08s ease;
-    }
-    /* Animated VU bars when active */
-    .app-row.tapped.playing:not(.muted) .vu-bar {
-      background: var(--playing);
-    }
-    .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(5) { background: var(--warning); }
-    .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(6) { background: var(--danger); }
-
-    /* Control buttons */
-    .row-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .power-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--text-tertiary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      outline: none;
-      transition: color 0.15s, transform 0.15s;
-    }
-    .power-btn:hover {
-      transform: scale(1.1);
-    }
-    .app-row.tapped .power-btn {
-      color: var(--primary);
-    }
-    .power-btn svg {
-      width: 19px;
-      height: 19px;
-    }
-
-    .expand-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4px;
-      border-radius: 50%;
-      outline: none;
-      transition: transform 0.2s ease, background 0.15s;
-      width: 20px;
-      height: 20px;
-    }
-    .expand-btn:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
-    .expand-btn:disabled {
-      opacity: 0.2;
-      cursor: not-allowed;
-    }
-    .expand-btn svg {
-      width: 9px;
-      height: 9px;
-      transform: rotate(0deg);
-      transition: transform 0.2s ease;
-    }
-    .app-row.expanded .expand-btn {
-      background: var(--border-glow);
-    }
-    .app-row.expanded .expand-btn svg {
-      transform: rotate(180deg);
-    }
-
-    /* Expanded Details Panel */
-    .row-details {
-      display: none;
-      padding: 12px;
-      background: rgba(0, 0, 0, 0.1);
-      flex-direction: column;
-      gap: 12px;
-      border-top: var(--border-width) solid var(--stroke);
-      animation: slideDown 0.2s ease-out;
-    }
-    .app-row.expanded.tapped .row-details {
-      display: flex;
-    }
-
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Routing details */
-    .route-section {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .route-label {
-      font-size: 10px;
-      font-weight: 900;
-      color: var(--text-dim);
-      letter-spacing: 0.05em;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-family: var(--font-display);
-    }
-    .route-label svg {
-      width: 12px;
-      height: 12px;
-      fill: var(--secondary);
-    }
-
-    /* Volume controls */
-    .volume-section {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .mute-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--secondary);
-      width: 16px;
-      height: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      outline: none;
-    }
-    .mute-btn.muted {
-      color: var(--text-tertiary);
-    }
-    .mute-btn svg {
-      width: 14px;
-      height: 14px;
-    }
-    .vol-slider-wrap {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      position: relative;
-    }
-    .vol-slider {
-      width: 100%;
-      height: 6px;
-      background: var(--stroke);
-      border-radius: 4px;
-      outline: none;
-      appearance: none;
-      cursor: pointer;
-    }
-    .vol-slider::-webkit-slider-thumb {
-      appearance: none;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--secondary);
-      border: 2px solid var(--stroke);
-      cursor: pointer;
-      box-shadow: 1px 1px 0 0 var(--stroke);
-      transition: transform 0.1s;
-    }
-    .vol-slider::-webkit-slider-thumb:hover {
-      transform: scale(1.2);
-    }
-    .vol-percentage {
-      font-size: 10px;
-      font-family: var(--font-mono);
-      color: var(--text-secondary);
-      width: 32px;
-      text-align: right;
-    }
-    .eq-bypass-btn {
-      background: rgba(255, 94, 151, 0.15);
-      border: 2px solid var(--stroke);
-      color: var(--secondary);
-      font-size: 9px;
-      font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 20px;
-      cursor: pointer;
-      outline: none;
-      transition: background 0.15s, color 0.15s;
-    }
-    .eq-bypass-btn.bypassed {
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-tertiary);
-      border-color: var(--text-tertiary);
-    }
-
-    /* EQ Editor */
-    .eq-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      animation: fadeIn 0.2s;
-    }
-    .eq-panel.hidden {
-      display: none;
-    }
-    .eq-svg-container {
-      position: relative;
-      width: 100%;
-      height: 80px;
-      background: rgba(0,0,0,0.2);
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.04);
-      overflow: hidden;
-    }
-    .eq-svg-container svg {
-      width: 100%;
-      height: 100%;
-    }
-    .eq-freq-labels {
-      display: flex;
-      justify-content: space-between;
-      padding: 0 4px;
-    }
-    .eq-freq-labels span {
-      font-size: 7.5px;
-      color: rgba(255,255,255,0.3);
-      font-family: var(--font-mono);
-      width: 24px;
-      text-align: center;
-    }
-
-    /* Popover Footer */
-    .popover-footer {
-      padding: 12px 16px;
-      background: var(--bg-soft);
-      border-top: var(--border-width) solid var(--stroke);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .footer-action-btn {
-      background: var(--surface-hi);
-      border: 2px solid var(--stroke);
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 800;
-      color: var(--text-secondary);
-      padding: 5px 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      transition: background 0.15s, color 0.15s;
-    }
-    .footer-action-btn:hover {
-      background: var(--card-bg-hover);
-      color: var(--text-primary);
-    }
-    .footer-action-btn.quit-btn {
-      background: rgba(255, 82, 82, 0.12);
-      color: var(--danger);
-    }
-    .footer-action-btn.quit-btn:hover {
-      background: rgba(255, 82, 82, 0.2);
-    }
-    .footer-action-btn svg {
-      width: 12px;
-      height: 12px;
-    }
-
-    /* Eye Rest Timer Panel */
-    .eye-rest-panel {
-      background: var(--surface-hi);
-      border: var(--border-width) solid var(--stroke);
-      border-radius: 16px;
-      margin: 8px 16px 12px 16px;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      box-shadow: var(--shadow-offset) var(--shadow-offset) 0 0 var(--shadow-color);
-    }
-    .eye-rest-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .eye-rest-title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 800;
-      font-family: var(--font-display);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .eye-rest-title-wrap svg {
-      width: 14px;
-      height: 14px;
-      fill: var(--primary);
-    }
-    .eye-rest-badge {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      border-radius: 20px;
-      font-size: 10px;
-      font-family: var(--font-mono);
-      font-weight: 700;
-    }
-    .eye-rest-badge.studying {
-      background: rgba(255, 225, 93, 0.12);
-      color: var(--primary);
-    }
-    .eye-rest-badge.breaking {
-      background: rgba(255, 82, 82, 0.12);
-      color: var(--danger);
-    }
-    .eye-rest-badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-    }
-    .eye-rest-badge.studying .eye-rest-badge-dot {
-      background: var(--primary);
-    }
-    .eye-rest-badge.breaking .eye-rest-badge-dot {
-      background: var(--danger);
-    }
-    
-    .eye-rest-inputs {
-      display: flex;
-      gap: 8px;
-    }
-    .eye-rest-field {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .eye-rest-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--text-dim);
-    }
-    .eye-rest-input {
-      background: var(--card-bg);
-      border: 2px solid var(--stroke);
-      border-radius: 10px;
-      color: var(--text);
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      padding: 6px;
-      text-align: center;
-      outline: none;
-      width: 100%;
-    }
-    .eye-rest-input:focus {
-      border-color: var(--secondary);
-    }
-    
-    .eye-rest-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px;
-      border-radius: 16px;
-      border: 2px solid var(--stroke);
-      font-family: var(--font-sans);
-      font-size: 12px;
-      font-weight: 800;
-      cursor: pointer;
-      transition: transform 0.15s, box-shadow 0.15s, background-color 0.15s;
-      outline: none;
-    }
-    .eye-rest-btn.start {
-      background: var(--primary);
-      color: var(--bg);
-      box-shadow: 2px 2px 0 0 var(--stroke);
-    }
-    .eye-rest-btn.start:hover {
-      transform: translate(-1px, -1px);
-      box-shadow: 3px 3px 0 0 var(--stroke);
-    }
-    .eye-rest-btn.start:active {
-      transform: translate(0, 0);
-      box-shadow: 2px 2px 0 0 var(--stroke);
-    }
-    .eye-rest-btn.stop {
-      background: rgba(255, 82, 82, 0.15);
-      color: var(--danger);
-      box-shadow: none;
-    }
-    .eye-rest-btn.stop:hover {
-      background: rgba(255, 82, 82, 0.25);
-    }
-
-    /* Demo Instructions Overlay */
-    .demo-tips {
-      margin-top: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-      font-size: 13px;
-      color: var(--text-dim);
-    }
-    .tip-pill {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 4px 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .tip-pill accent {
-      color: var(--primary);
-      font-weight: 600;
-    }
-
-    /* Features Grid */
-    .features-section {
-      padding: 80px 0;
-      border-top: 1px solid var(--border);
-    }
-    .section-title {
-      font-family: var(--font-display);
-      font-size: 32px;
-      font-weight: 800;
-      text-align: center;
-      margin-bottom: 48px;
-    }
-    .features-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-    .feature-card {
-      padding: 30px;
-      display: flex;
-      gap: 20px;
-    }
-    .feature-icon-box {
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      background: rgba(0, 242, 254, 0.08);
-      border: 1px solid rgba(0, 242, 254, 0.15);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--primary);
-      flex-shrink: 0;
-    }
-    .feature-icon-box.purple {
-      background: rgba(157, 78, 221, 0.08);
-      border-color: rgba(157, 78, 221, 0.15);
-      color: var(--secondary);
-    }
-    .feature-icon-box svg {
-      width: 24px;
-      height: 24px;
-      fill: currentColor;
-    }
-    .feature-content h3 {
-      font-family: var(--font-display);
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: #fff;
-    }
-    .feature-content p {
-      font-size: 14px;
-      color: var(--text-dim);
-      line-height: 1.5;
-    }
-
-    /* Installation timeline */
-    .install-section {
-      padding: 80px 0;
-      border-top: 1px solid var(--border);
-    }
-    .timeline {
-      max-width: 680px;
-      margin: 40px auto 0;
-      position: relative;
-    }
-    .timeline::before {
-      content: '';
-      position: absolute;
-      left: 19px;
-      top: 10px;
-      bottom: 10px;
-      width: 2px;
-      background: var(--border);
-    }
-    .timeline-item {
-      position: relative;
-      padding-left: 56px;
-      margin-bottom: 36px;
-    }
-    .timeline-item:last-child {
-      margin-bottom: 0;
-    }
-    .timeline-num {
-      position: absolute;
-      left: 0;
-      top: 2px;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: var(--bg-soft);
-      border: 2px solid var(--border);
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 14px;
-      transition: border-color 0.3s, background 0.3s;
-    }
-    .timeline-item:hover .timeline-num {
-      border-color: var(--primary);
-      background: rgba(0, 242, 254, 0.05);
-      color: var(--primary);
-    }
-    .timeline-content h3 {
-      font-size: 16px;
-      font-weight: 700;
-      margin-bottom: 6px;
-      color: #fff;
-    }
-    .timeline-content p {
-      font-size: 14px;
-      color: var(--text-dim);
-    }
-
-    /* Terminal Blocks & Copy */
-    .code-wrapper {
-      position: relative;
-      margin-top: 12px;
-      border-radius: 8px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .code-block {
-      display: block;
-      background: #090c10;
-      padding: 14px 16px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      color: #eaeaea;
-      overflow-x: auto;
-      white-space: pre;
-    }
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: var(--text-dim);
-      transition: background 0.2s, color 0.2s, border-color 0.2s;
-    }
-    .copy-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--primary);
-      border-color: rgba(0, 242, 254, 0.3);
-    }
-    .copy-btn svg {
-      width: 14px;
-      height: 14px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .copy-btn .check-icon {
-      display: none;
-      stroke: #10b981;
-    }
-    .copy-btn.copied .copy-icon {
-      display: none;
-    }
-    .copy-btn.copied .check-icon {
-      display: block;
-    }
-
-    /* Quarantine alert */
-    .alert-card {
-      margin-top: 24px;
-      padding: 20px;
-      border-left: 4px solid #f59e0b;
-      background: rgba(245, 158, 11, 0.03);
-      border-radius: 0 12px 12px 0;
-      border-top: 1px solid rgba(245, 158, 11, 0.08);
-      border-right: 1px solid rgba(245, 158, 11, 0.08);
-      border-bottom: 1px solid rgba(245, 158, 11, 0.08);
-    }
-    .alert-card h4 {
-      color: #f59e0b;
-      font-size: 14px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .alert-card h4 svg {
-      width: 16px;
-      height: 16px;
-      fill: currentColor;
-    }
-    .alert-card p {
-      font-size: 13.5px;
-      color: var(--text-dim);
-      margin-bottom: 12px;
-    }
-    .alert-card b {
-      color: #fef08a;
-    }
-
-    /* Build Section */
-    .build-section {
-      padding: 80px 0;
-      border-top: 1px solid var(--border);
-    }
-    .build-container {
-      max-width: 680px;
-      margin: 0 auto;
-    }
-
-    /* Footer */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 40px 0 60px;
-      text-align: center;
-      font-size: 13px;
-      color: var(--text-dim);
-      background: #05070a;
-    }
-    footer a {
-      color: var(--primary);
-      text-decoration: none;
-      transition: color 0.15s;
-    }
-    footer a:hover {
-      color: var(--secondary);
-    }
-    footer .tech-note {
-      margin-top: 8px;
-      font-size: 11px;
-      opacity: 0.6;
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 860px) {
-      .hero h1 {
-        font-size: 40px;
-      }
-      .features-grid {
-        grid-template-columns: 1fr;
-      }
-      .mac-desktop {
-        aspect-ratio: auto;
-        height: 520px;
-      }
-      .mac-popover {
-        position: relative;
-        top: 0; right: 0;
-        width: 100%;
-        max-height: none;
-        border-radius: 0;
-        border: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-      }
-      .mac-menubar {
-        display: none;
-      }
-      .showcase-container {
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-      }
-    }
-    @media (max-width: 600px) {
-      .nav-links {
-        display: none;
-      }
-      .hero-ctas {
-        flex-direction: column;
-        width: 100%;
-        max-width: 280px;
-        margin: 0 auto 16px;
-      }
-      .btn {
-        width: 100%;
-        justify-content: center;
-      }
-    }
+    .vu-bar { transition: height 0.08s ease; }
+    .app-row.expanded .expand-icon { transform: rotate(180deg); }
+    .app-row.playing .app-status-dot { display: block; }
+    .app-row.tapped.playing:not(.muted) .vu-bar { background-color: #34D399; }
+    .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(5) { background-color: #F59E0B; }
+    .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(6) { background-color: #F87171; }
   </style>
 </head>
-<body>
+<body class="bg-[#080C14] font-sans text-slate-100 antialiased selection:bg-sky-500/30 selection:text-sky-200">
 
-  <!-- Navigation -->
-  <nav>
-    <div class="container" style="width: 100%; display: flex; align-items: center; justify-content: space-between;">
-      <a href="#" class="nav-logo">
-        <img src="./logo.png" alt="Minh Thw logo">
-        <span>Minh<accent> Thw ☁️</accent></span>
+  <!-- Navigation Bar -->
+  <nav class="sticky top-0 z-50 h-16 border-b border-white/10 bg-[#080C14]/85 backdrop-blur-md">
+    <div class="mx-auto flex h-full max-w-6xl items-center justify-between px-6">
+      <a href="#" class="flex items-center gap-2.5 text-white">
+        <img src="./logo.png" alt="SoundsSource logo" class="h-8 w-8 rounded-lg border border-white/10">
+        <span class="font-display text-lg font-extrabold tracking-tight">Sounds<span class="text-sky-400">Source</span></span>
       </a>
-      <div class="nav-links">
-        <a href="#features">Tính năng</a>
-        <a href="#install">Cài đặt</a>
-        <a href="#build">Build từ Source</a>
-        <a href="https://github.com/songoku-03/voice-macos" class="nav-git-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:middle;margin-right:2px;"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+      <div class="hidden items-center gap-7 md:flex">
+        <a href="#features" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Tính năng</a>
+        <a href="#install" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Cài đặt</a>
+        <a href="#build" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Biên dịch Source</a>
+        <a href="https://github.com/songoku-03/voice-macos" class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:border-sky-400/50 hover:bg-sky-400/10">
+          <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
           GitHub
         </a>
       </div>
     </div>
   </nav>
 
-  <!-- Hero Section -->
-  <header class="hero">
-    <div class="container">
-      <div class="badge">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 4px; display:inline-block; vertical-align: middle;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+  <!-- Focused Hero Section -->
+  <header class="py-14 text-center">
+    <div class="mx-auto max-w-4xl px-6">
+      <div class="mb-5 inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-3.5 py-1 text-xs font-semibold text-sky-400">
+        <svg class="h-3 w-3 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Miễn phí &amp; Mã nguồn mở
       </div>
-      <h1>Điều khiển âm thanh <accent>từng ứng dụng</accent> trên macOS</h1>
-      <p class="tagline">
-        Chỉnh âm lượng độc lập, tắt tiếng tức thì, cân bằng EQ 10-band và định tuyến âm thanh (route) nhạc Spotify ra tai nghe, âm thanh game ra loa ngoài. Chạy nhẹ nhàng từ menu bar, không cần cài driver kext phức tạp.
+      <h1 class="font-display text-4xl font-black leading-tight tracking-tight text-white md:text-5xl">
+        Điều khiển âm thanh <span class="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">từng ứng dụng</span> trên macOS
+      </h1>
+      <p class="mx-auto mb-8 max-w-xl text-base text-slate-400 md:text-lg">
+        Chỉnh âm lượng, EQ 10-band và định tuyến âm thanh riêng cho từng ứng dụng macOS ngay từ Menu Bar.
       </p>
-      
-      <div class="hero-ctas">
-        <a class="btn btn-primary" href="https://github.com/songoku-03/voice-macos/releases/latest/download/SoundsSource.dmg">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Tải MinhThw.dmg
+      <div class="mb-4 flex flex-wrap items-center justify-center gap-3">
+        <a href="https://github.com/songoku-03/voice-macos/releases/latest/download/SoundsSource.dmg" class="inline-flex items-center gap-2 rounded-xl bg-sky-400 px-6 py-3 font-sans text-sm font-bold text-slate-950 shadow-lg shadow-sky-400/25 transition hover:-translate-y-0.5 hover:bg-sky-300 active:translate-y-0">
+          <svg class="h-4 w-4 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Tải SoundsSource.dmg
         </a>
-        <a class="btn btn-secondary" href="https://github.com/songoku-03/voice-macos">
-          Xem dự án GitHub
+        <a href="https://github.com/songoku-03/voice-macos" class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 font-sans text-sm font-bold text-white transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/10">
+          Xem mã nguồn GitHub
         </a>
       </div>
-      <p class="requirements">Yêu cầu macOS 14.2 trở lên (Apple Silicon &amp; Intel)</p>
+      <p class="text-xs text-slate-500">Hỗ trợ macOS 14.2+ (Apple Silicon &amp; Intel)</p>
     </div>
   </header>
 
-  <!-- Interactive Desktop Demonstration -->
-  <section class="container" style="padding-bottom: 40px;">
-    <div class="showcase-container">
-      <div class="mac-desktop">
-        <div class="mac-wallpaper-glow"></div>
-        
-        <!-- Mac Menu Bar -->
-        <div class="mac-menubar">
-          <div class="menubar-left">
-            <span class="apple-icon"></span>
-            <span class="menu-item">Finder</span>
-            <span style="opacity: 0.6;">File</span>
-            <span style="opacity: 0.6;">Edit</span>
-            <span style="opacity: 0.6;">View</span>
-            <span style="opacity: 0.6;">Go</span>
-            <span style="opacity: 0.6;">Window</span>
-            <span style="opacity: 0.6;">Help</span>
+  <!-- Interactive macOS Desktop Simulator -->
+  <section class="pb-10">
+    <div class="mx-auto max-w-4xl px-4">
+      <div class="relative aspect-[16/11] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#152033] to-[#0c121e] shadow-2xl shadow-black/80">
+        <!-- Wallpaper Glow -->
+        <div class="pointer-events-none absolute -top-1/4 -left-1/4 h-[150%] w-[150%] bg-[radial-gradient(circle_at_30%_25%,rgba(56,189,248,0.12)_0%,transparent_45%),radial-gradient(circle_at_75%_65%,rgba(129,140,248,0.1)_0%,transparent_50%)]"></div>
+
+        <!-- macOS Menu Bar -->
+        <div class="relative z-10 flex h-7 items-center justify-between border-b border-white/10 bg-[#0c121e]/75 px-4 font-sans text-xs text-white/90 backdrop-blur-md">
+          <div class="flex items-center gap-3.5">
+            <span></span>
+            <span class="font-semibold">Finder</span>
+            <span class="opacity-60">File</span>
+            <span class="opacity-60">Edit</span>
+            <span class="opacity-60">View</span>
+            <span class="opacity-60">Go</span>
+            <span class="opacity-60">Window</span>
+            <span class="opacity-60">Help</span>
           </div>
-          <div class="menubar-right">
-            <!-- Wi-Fi -->
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h.01M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 14 0M1.5 9.5a15 15 0 0 1 21 0"/></svg>
-            <!-- Battery -->
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2" ry="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg>
-            <!-- Date/Time -->
-            <span style="font-weight: 600;" id="mac-clock">Sat 11:52 PM</span>
+          <div class="flex items-center gap-3.5">
+            <svg class="h-3.5 w-3.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h.01M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 14 0M1.5 9.5a15 15 0 0 1 21 0"/></svg>
+            <svg class="h-3.5 w-3.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2" ry="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg>
+            <span class="font-semibold" id="mac-clock">Sat 11:52 PM</span>
             
-            <!-- Minh Thw Indicator Trigger -->
-            <div class="menubar-app-trigger active" id="popover-trigger" title="Mở Minh Thw">
-              <svg viewBox="0 0 24 24">
+            <div id="popover-trigger" class="active flex cursor-pointer items-center justify-center rounded px-1.5 py-0.5 text-sky-400 transition hover:bg-sky-400/20" title="Mở SoundsSource">
+              <svg class="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
                 <rect x="3" y="10" width="3" height="4" rx="1.5"/>
                 <rect x="8" y="6" width="3" height="12" rx="1.5"/>
                 <rect x="13" y="2" width="3" height="20" rx="1.5"/>
@@ -1321,241 +125,203 @@
           </div>
         </div>
 
-        <!-- Minh Thw App Popover Window -->
-        <div class="mac-popover open" id="app-popover">
-          
-          <!-- Header -->
-          <div class="popover-header">
-            <div class="popover-brand">
-              <span class="brand-title">Minh Thw ☁️</span>
-            </div>
-            
-            <!-- Output device -->
-            <select class="device-picker" id="system-output" title="Thiết bị đầu ra chính">
+        <!-- Popover App Window -->
+        <div id="app-popover" class="open absolute top-9 right-3.5 z-20 flex max-h-[calc(100%-44px)] w-[350px] flex-col overflow-hidden rounded-xl border border-white/15 bg-[#0E1626]/95 shadow-2xl backdrop-blur-xl transition-all duration-200">
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-3.5 py-2.5">
+            <span class="font-display text-sm font-extrabold text-white">SoundsSource</span>
+            <select id="system-output" class="max-w-[145px] appearance-none rounded border border-white/10 bg-[#0E1626] px-2 py-1 text-[11px] font-semibold text-slate-200 outline-none hover:border-sky-400/40">
               <option value="speakers"> MacBook Pro Speakers</option>
               <option value="headphones">🎧 AirPods Max</option>
               <option value="display">📺 Studio Display Loa</option>
             </select>
           </div>
 
-          <!-- Apps list -->
-          <div class="popover-list" id="apps-list">
-            <!-- Items generated via JS to allow smooth interactive bindings -->
+          <div id="apps-list" class="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2.5">
           </div>
 
-          <!-- Eye Rest Timer Panel -->
-          <div class="eye-rest-panel" id="eye-rest-panel">
-            <div class="eye-rest-header">
-              <div class="eye-rest-title-wrap">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <!-- Pomodoro / Eye Rest Panel -->
+          <div id="eye-rest-panel" class="m-2.5 flex flex-col gap-2 rounded-xl border border-white/10 bg-[#0E1626] p-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 font-display text-[11px] font-extrabold uppercase tracking-wider text-white">
+                <svg class="h-3.5 w-3.5 fill-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                 <span>Nghỉ mắt</span>
               </div>
-              <div class="eye-rest-badge" id="eye-rest-status-badge" style="display: none;">
-                <span class="eye-rest-badge-dot"></span>
+              <div id="eye-rest-status-badge" class="hidden items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400">
+                <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
                 <span id="eye-rest-status-text">📖 25:00</span>
               </div>
             </div>
-            
-            <div class="eye-rest-inputs" id="eye-rest-inputs">
-              <div class="eye-rest-field">
-                <span class="eye-rest-label">Học (phút)</span>
-                <input type="number" class="eye-rest-input" id="eye-rest-study" value="25" min="1" max="120">
+            <div id="eye-rest-inputs" class="flex gap-2">
+              <div class="flex flex-1 flex-col gap-1">
+                <span class="text-[10px] text-slate-400">Học (phút)</span>
+                <input type="number" id="eye-rest-study" value="25" min="1" max="120" class="w-full rounded border border-white/10 bg-[#152033] p-1 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
               </div>
-              <div class="eye-rest-field">
-                <span class="eye-rest-label">Nghỉ (phút)</span>
-                <input type="number" class="eye-rest-input" id="eye-rest-break" value="5" min="1" max="60">
+              <div class="flex flex-1 flex-col gap-1">
+                <span class="text-[10px] text-slate-400">Nghỉ (phút)</span>
+                <input type="number" id="eye-rest-break" value="5" min="1" max="60" class="w-full rounded border border-white/10 bg-[#152033] p-1 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
               </div>
             </div>
-            
-            <button class="eye-rest-btn start" id="eye-rest-btn" onclick="toggleEyeRest()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" id="eye-rest-btn-icon" style="display:inline-block;vertical-align:middle;margin-right:2px;"><path d="M8 5v14l11-7z"/></svg>
+            <button id="eye-rest-btn" onclick="toggleEyeRest()" class="flex items-center justify-center gap-1.5 rounded-lg bg-sky-400 p-1.5 text-xs font-bold text-slate-950 transition hover:bg-sky-300">
+              <svg id="eye-rest-btn-icon" class="h-3 w-3 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
               <span id="eye-rest-btn-text">Bắt đầu</span>
             </button>
           </div>
 
-          <!-- Footer -->
-          <div class="popover-footer">
-            <button class="footer-action-btn" id="save-preset-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <div class="flex items-center justify-between border-t border-white/10 bg-white/[0.03] px-3.5 py-2">
+            <button id="save-preset-btn" class="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-white/10 hover:text-white">
+              <svg class="h-3 w-3 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
               Save Preset
             </button>
-            <button class="footer-action-btn quit-btn" id="quit-app-btn">
-              Quit Minh Thw
+            <button id="quit-app-btn" class="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-400 transition hover:bg-red-500/20">
+              Quit SoundsSource
             </button>
           </div>
         </div>
-
       </div>
       
-      <!-- Interactive Demo Guidance -->
-      <div class="demo-tips">
-        <div class="tip-pill">
-          <span class="tip-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--primary); display: inline-block;"></span>
-          <span>Bấm icon <accent>🎛️</accent> trên menu bar để đóng/mở popover</span>
+      <!-- Interactive Guidance -->
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
+        <div class="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1">
+          <span class="h-2 w-2 rounded-full bg-sky-400"></span>
+          <span>Bấm icon <span class="font-semibold text-sky-400">🎛️</span> trên Menu Bar để đóng/mở popover</span>
         </div>
-        <div class="tip-pill">
-          <span>💡 <accent>Kéo điểm EQ</accent> hoặc đổi preset để trải nghiệm thử</span>
+        <div class="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1">
+          <span>💡 <span class="font-semibold text-sky-400">Kéo điểm EQ</span> để tùy chỉnh âm thanh live</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Features Section -->
-  <section class="features-section" id="features">
-    <div class="container">
-      <h2 class="section-title">Tính năng nổi bật</h2>
+  <!-- Bento Features Grid -->
+  <section id="features" class="border-t border-white/10 py-16">
+    <div class="mx-auto max-w-6xl px-6">
+      <h2 class="mb-10 text-center font-display text-3xl font-extrabold tracking-tight text-white">Tính năng nổi bật</h2>
       
-      <div class="features-grid">
-        <!-- Feature 1 -->
-        <div class="glass-card feature-card">
-          <div class="feature-icon-box">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M19 12h2M3 12h2M12 3v2M12 19v2"/></svg>
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-sky-400/40 hover:shadow-xl hover:shadow-black/50 md:col-span-2">
+          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 text-sky-400">
+            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M19 12h2M3 12h2M12 3v2M12 19v2"/></svg>
           </div>
-          <div class="feature-content">
-            <h3>Bắt (Capture) tiếng từng app</h3>
-            <p>Tách biệt luồng âm thanh của bất kỳ ứng dụng nào đang chạy: Spotify, Google Chrome, Safari, Discord, game 3D, VLC...</p>
-          </div>
+          <h3 class="mb-2 font-display text-xl font-bold text-white">Bắt (Capture) tiếng từng ứng dụng</h3>
+          <p class="text-sm leading-relaxed text-slate-400">Tách biệt luồng âm thanh tiến trình của bất kỳ ứng dụng nào đang chạy: Spotify, Chrome, Safari, Discord, game 3D hay VLC mà không ảnh hưởng tới các app khác.</p>
         </div>
 
-        <!-- Feature 2 -->
-        <div class="glass-card feature-card">
-          <div class="feature-icon-box purple">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-indigo-400/40 hover:shadow-xl hover:shadow-black/50">
+          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400">
+            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
           </div>
-          <div class="feature-content">
-            <h3>Âm lượng &amp; Mute độc lập</h3>
-            <p>Tăng giảm âm lượng lên tới 200% hoặc tắt tiếng riêng lẻ cho từng ứng dụng mà không ảnh hưởng đến âm thanh chung của hệ thống.</p>
-          </div>
+          <h3 class="mb-2 font-display text-xl font-bold text-white">Âm lượng &amp; Mute độc lập</h3>
+          <p class="text-sm leading-relaxed text-slate-400">Khuếch đại âm lượng đến 200% hoặc tắt tiếng nhanh cho từng app riêng biệt.</p>
         </div>
 
-        <!-- Feature 3 -->
-        <div class="glass-card feature-card">
-          <div class="feature-icon-box purple">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-indigo-400/40 hover:shadow-xl hover:shadow-black/50">
+          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400">
+            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
           </div>
-          <div class="feature-content">
-            <h3>Bộ lọc Equalizer 10-band</h3>
-            <p>Equalizer chi tiết từ dải tần 32 Hz đến 16 kHz. Kéo thả các điểm nối trực tiếp trên đồ thị đường cong trực quan, hỗ trợ lưu nhiều preset nhanh chóng.</p>
-          </div>
+          <h3 class="mb-2 font-display text-xl font-bold text-white">Equalizer 10-band trực quan</h3>
+          <p class="text-sm leading-relaxed text-slate-400">Điều chỉnh đường cong âm sắc từ 32 Hz đến 16 kHz bằng đồ thị kéo thả mượt mà.</p>
         </div>
 
-        <!-- Feature 4 -->
-        <div class="glass-card feature-card">
-          <div class="feature-icon-box">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-sky-400/40 hover:shadow-xl hover:shadow-black/50 md:col-span-2">
+          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 text-sky-400">
+            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
           </div>
-          <div class="feature-content">
-            <h3>Định tuyến (Route) linh hoạt</h3>
-            <p>Đẩy âm thanh mỗi ứng dụng ra các thiết bị phát khác nhau: Nhạc Spotify chạy ra tai nghe bluetooth, cuộc họp Discord phát ra loa ngoài.</p>
-          </div>
+          <h3 class="mb-2 font-display text-xl font-bold text-white">Định tuyến (Route) âm thanh linh hoạt</h3>
+          <p class="text-sm leading-relaxed text-slate-400">Đẩy âm thanh từng app ra thiết bị phát khác nhau: Nhạc Spotify phát ra AirPods Max, thoại Discord ra loa Studio Display.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Installation Guide Section -->
-  <section class="install-section" id="install">
-    <div class="container">
-      <h2 class="section-title">Hướng dẫn cài đặt nhanh</h2>
+  <!-- Installation Steps -->
+  <section id="install" class="border-t border-white/10 py-16">
+    <div class="mx-auto max-w-6xl px-6">
+      <h2 class="mb-10 text-center font-display text-3xl font-extrabold tracking-tight text-white">Hướng dẫn cài đặt</h2>
       
-      <div class="timeline">
-        <!-- Step 1 -->
-        <div class="timeline-item">
-          <div class="timeline-num">1</div>
-          <div class="timeline-content">
-            <h3>Tải file đóng gói DMG</h3>
-            <p>Nhấp nút tải ở đầu trang hoặc truy cập kho lưu trữ Releases để tải xuống file cài đặt <b>SoundsSource.dmg</b> mới nhất.</p>
+      <div class="relative mx-auto max-w-2xl space-y-8 before:absolute before:top-2.5 before:bottom-2.5 before:left-[19px] before:w-0.5 before:bg-white/10">
+        <div class="group relative flex items-start gap-5 pl-14">
+          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">1</div>
+          <div>
+            <h3 class="font-bold text-white">Tải file đóng gói DMG</h3>
+            <p class="text-sm text-slate-400">Nhấp nút tải ở đầu trang để lấy bản đóng gói <b>SoundsSource.dmg</b> chính thức từ Releases.</p>
           </div>
         </div>
 
-        <!-- Step 2 -->
-        <div class="timeline-item">
-          <div class="timeline-num">2</div>
-          <div class="timeline-content">
-            <h3>Thả vào thư mục Applications</h3>
-            <p>Mở file DMG vừa tải, kéo biểu tượng <b>Minh Thw</b> thả vào thư mục <b>Applications</b> trên ổ đĩa của bạn.</p>
+        <div class="group relative flex items-start gap-5 pl-14">
+          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">2</div>
+          <div>
+            <h3 class="font-bold text-white">Kéo thả vào Applications</h3>
+            <p class="text-sm text-slate-400">Mở file DMG vừa tải, kéo biểu tượng <b>SoundsSource</b> vào thư mục <b>Applications</b> trên Mac.</p>
           </div>
         </div>
 
-        <!-- Step 3 -->
-        <div class="timeline-item">
-          <div class="timeline-num">3</div>
-          <div class="timeline-content">
-            <h3>Mở và Cấp quyền thu âm</h3>
-            <p>Khởi chạy <b>Minh Thw</b> lần đầu tiên. macOS sẽ yêu cầu cấp quyền <b>Ghi âm (Microphone/Audio capture)</b>. Đây là quyền bắt buộc để hệ thống cho phép app tap và trích xuất luồng âm thanh tiến trình. Chọn <b>Đồng ý (Allow)</b>.</p>
+        <div class="group relative flex items-start gap-5 pl-14">
+          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">3</div>
+          <div>
+            <h3 class="font-bold text-white">Cấp quyền Audio Capture</h3>
+            <p class="text-sm text-slate-400">Khởi chạy ứng dụng lần đầu và chọn <b>Allow</b> khi macOS yêu cầu cấp quyền thu âm để tiến trình capture âm thanh.</p>
           </div>
         </div>
 
-        <!-- Step 4 -->
-        <div class="timeline-item">
-          <div class="timeline-num">4</div>
-          <div class="timeline-content">
-            <h3>Bắt đầu sử dụng từ Menu bar</h3>
-            <p>Nhấp vào icon cột sóng âm 🎚️ trên thanh menu macOS để gọi bảng điều khiển và bắt đầu thiết lập âm thanh cho từng ứng dụng.</p>
+        <div class="group relative flex items-start gap-5 pl-14">
+          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">4</div>
+          <div>
+            <h3 class="font-bold text-white">Sử dụng từ Menu Bar</h3>
+            <p class="text-sm text-slate-400">Nhấp vào biểu tượng sóng âm trên thanh Menu Bar để mở bảng điều khiển bất cứ lúc nào.</p>
           </div>
         </div>
       </div>
 
-      <!-- Warning Quarantine block -->
-      <div class="alert-card max-width-680" style="max-width: 680px; margin: 40px auto 0;">
-        <h4>
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-          Lưu ý khi mở app bị cảnh báo Unidentified Developer
+      <!-- Alert Card -->
+      <div class="mx-auto mt-10 max-w-2xl rounded-r-xl border-l-4 border-amber-500 border-y border-r border-amber-500/20 bg-amber-500/5 p-5">
+        <h4 class="mb-2 flex items-center gap-2 text-sm font-bold text-amber-400">
+          <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          Gỡ cảnh báo Unidentified Developer (quarantine)
         </h4>
-        <p>
-          Vì đây là ứng dụng mã nguồn mở tự biên dịch và được ký chữ ký ad-hoc cục bộ (không qua đăng ký trả phí nhà phát triển Apple Notarization), macOS có thể hiển thị cảnh báo chặn không mở được app. Bạn có hai cách gỡ chặn đơn giản:
+        <p class="mb-2 text-xs text-slate-400">
+          Vì app được ký chữ ký ad-hoc mã nguồn mở, macOS có thể hiển thị cảnh báo khi mở lần đầu. Bạn có thể mở nhanh bằng 2 cách:
         </p>
-        <p style="margin-bottom: 8px;">
-          • <b>Cách 1</b>: Chuột phải vào app trong thư mục Applications → chọn <b>Open</b> → nhấn tiếp <b>Open</b> để xác nhận mở. Chỉ cần làm một lần duy nhất này.
-        </p>
-        <p style="margin-bottom: 8px;">
-          • <b>Cách 2</b>: Mở Terminal trên Mac lên và dán lệnh sau để gỡ bỏ cờ kiểm dịch cách ly (quarantine) của hệ điều hành:
-        </p>
-        <div class="code-wrapper">
-          <button class="copy-btn" onclick="copySnippet(this, 'quarantine-cmd')" title="Sao chép">
-            <svg class="copy-icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            <svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <p class="mb-1 text-xs text-slate-400">• <b>Cách 1</b>: Chuột phải vào app trong Applications → chọn <b>Open</b>.</p>
+        <p class="mb-2 text-xs text-slate-400">• <b>Cách 2</b>: Dán lệnh sau vào Terminal để gỡ cờ kiểm dịch cách ly:</p>
+        <div class="relative overflow-hidden rounded-lg border border-white/10 bg-[#05080e]">
+          <button onclick="copySnippet(this, 'quarantine-cmd')" class="copy-btn absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-sky-400">
+            <svg class="copy-icon h-3.5 w-3.5" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg class="check-icon hidden h-3.5 w-3.5 stroke-emerald-400" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <code class="code-block" id="quarantine-cmd">xattr -dr com.apple.quarantine /Applications/SoundsSource.app</code>
+          <code id="quarantine-cmd" class="block p-3.5 font-mono text-xs text-slate-200">xattr -dr com.apple.quarantine /Applications/SoundsSource.app</code>
         </div>
       </div>
 
     </div>
   </section>
 
-  <!-- Build from Source Section -->
-  <section class="build-section" id="build">
-    <div class="build-container">
-      <h2 class="section-title" style="margin-bottom: 24px;">Tự biên dịch từ mã nguồn</h2>
-      <p style="text-align: center; color: var(--text-dim); margin-bottom: 30px; font-size: 15px;">
-        Nếu bạn là lập trình viên muốn tự kiểm tra và biên dịch từ mã nguồn gốc, hãy chạy tuần tự các lệnh sau trong Terminal (Yêu cầu macOS 14.2+ và Swift 6 / Xcode 16+):
-      </p>
+  <!-- Build Section -->
+  <section id="build" class="border-t border-white/10 py-16">
+    <div class="mx-auto max-w-2xl px-6 text-center">
+      <h2 class="mb-4 font-display text-3xl font-extrabold tracking-tight text-white">Tự biên dịch từ mã nguồn</h2>
+      <p class="mb-7 text-sm text-slate-400">Chạy các lệnh sau trong Terminal để build file DMG thành phẩm (Yêu cầu macOS 14.2+ &amp; Xcode 16+):</p>
       
-      <div class="code-wrapper">
-        <button class="copy-btn" onclick="copySnippet(this, 'build-cmd')" title="Sao chép">
-          <svg class="copy-icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      <div class="relative overflow-hidden rounded-lg border border-white/10 bg-[#05080e] text-left">
+        <button onclick="copySnippet(this, 'build-cmd')" class="copy-btn absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-sky-400">
+          <svg class="copy-icon h-3.5 w-3.5" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg class="check-icon hidden h-3.5 w-3.5 stroke-emerald-400" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
-        <code class="code-block" id="build-cmd">git clone https://github.com/songoku-03/voice-macos.git
+        <code id="build-cmd" class="block p-4 font-mono text-xs leading-relaxed text-slate-200">git clone https://github.com/songoku-03/voice-macos.git
 cd voice-macos
 ./scripts/build_dmg.sh</code>
       </div>
-      <p style="font-size: 12.5px; color: var(--text-dim); margin-top: 10px; font-style: italic; text-align: center;">
-        Tập tin DMG thành phẩm sau khi chạy script thành công sẽ nằm trong thư mục <b>build/SoundsSource.dmg</b>.
-      </p>
     </div>
   </section>
 
-  <footer>
-    <div class="container">
-      <p>Minh Thw · Dự án mã nguồn mở đăng tải trên <a href="https://github.com/songoku-03/voice-macos" target="_blank">GitHub</a></p>
-      <p class="tech-note">Được xây dựng bằng API CoreAudio process taps kết hợp với AVAudioEngine đồ thị node âm thanh của Apple.</p>
+  <footer class="border-t border-white/10 bg-[#05080e] py-10 text-center text-xs text-slate-400">
+    <div class="mx-auto max-w-6xl px-6">
+      <p>SoundsSource · Dự án mã nguồn mở đăng tải trên <a href="https://github.com/songoku-03/voice-macos" target="_blank" class="text-sky-400 hover:text-indigo-400">GitHub</a></p>
+      <p class="mt-1.5 text-[11px] text-slate-500">Xây dựng bằng CoreAudio Process Taps kết hợp với đồ thị node AVAudioEngine của Apple.</p>
     </div>
   </footer>
 
-  <!-- Application Mockup Logic (JavaScript) -->
+  <!-- Interactive Desktop Simulator Logic -->
   <script>
-    // State management for interactive mockup
     const state = {
       activePreset: 'Flat',
       outputDevice: 'speakers',
@@ -1615,7 +381,6 @@ cd voice-macos
       ]
     };
 
-    // Preset configurations
     const PRESETS = {
       'Flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       'Bass Booster': [6, 5, 4, 2, 0, 0, 0, 0, 1, 2],
@@ -1625,26 +390,23 @@ cd voice-macos
       'Electronic': [5, 4, 1, 0, -1, 2, 1, 2, 4, 5]
     };
 
-    // SVG icons dictionary
     const SVG_ICONS = {
       spotify: `<svg viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.373 0 0 5.372 0 12s5.373 12 12 12 12-5.372 12-12S18.627 0 12 0zm5.49 17.31c-.216.354-.678.47-1.03.255-2.868-1.753-6.48-2.15-10.73-1.177-.403.093-.812-.162-.905-.565-.093-.404.162-.813.565-.905 4.654-1.063 8.627-.614 11.845 1.353.354.215.47.677.255 1.033zm1.464-3.26c-.272.443-.855.586-1.3.313-3.284-2.018-8.29-2.605-12.176-1.425-.5.15-1.023-.135-1.173-.634-.15-.5.135-1.02.634-1.17 4.444-1.35 9.954-.69 13.7 1.614.446.27.59.854.316 1.3zm.104-3.39c-3.938-2.34-10.434-2.553-14.215-1.404-.604.183-1.246-.157-1.43-.762-.183-.604.157-1.246.762-1.43 4.342-1.32 11.51-1.066 16.037 1.62.545.324.724 1.03.4 1.577-.324.544-1.03.722-1.577.4z"/></svg>`,
-      chrome: `<svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 8h8M12 16H4M15.46 14.1l-4 6.93M8.54 9.9l4-6.93"/></svg>`,
+      chrome: `<svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 8h8M12 16H4M15.46 14.1l-4 6.93M8.54 9.9l4-6.93"/></svg>`,
       discord: `<svg viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.094 13.094 0 0 1-1.873-.894.077.077 0 0 1-.008-.128c.126-.093.252-.19.372-.287a.075.075 0 0 1 .077-.011c3.92 1.793 8.18 1.793 12.061 0a.073.073 0 0 1 .078.009c.12.099.246.195.373.289a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.156 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.156 2.418z"/></svg>`,
-      game: `<svg viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg>`
+      game: `<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg>`
     };
 
-    // Active drag index track for EQ nodes
     let dragNode = null;
     let dragAppId = null;
 
-    // Load initial clock
     function updateClock() {
       const now = new Date();
       let hours = now.getHours();
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const ampm = hours >= 12 ? 'PM' : 'AM';
       hours = hours % 12;
-      hours = hours ? hours : 12; // 0 should be 12
+      hours = hours ? hours : 12;
       
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const day = dayNames[now.getDay()];
@@ -1654,7 +416,6 @@ cd voice-macos
     setInterval(updateClock, 30000);
     updateClock();
 
-    // Toggle popover visibility
     const popoverTrigger = document.getElementById('popover-trigger');
     const popoverWindow = document.getElementById('app-popover');
     
@@ -1671,129 +432,106 @@ cd voice-macos
       }
     });
 
-
-
-    // Main Output Selector
     document.getElementById('system-output').addEventListener('change', (e) => {
       state.outputDevice = e.target.value;
     });
 
-    // Render all App rows inside popover
     function renderAppsList() {
       const container = document.getElementById('apps-list');
       container.innerHTML = '';
 
       state.apps.forEach(app => {
         const row = document.createElement('div');
-        row.className = `app-row ${app.tapped ? 'tapped' : 'disabled'} ${app.isPlaying ? 'playing' : ''} ${app.expanded ? 'expanded' : ''} ${app.muted ? 'muted' : ''}`;
+        row.className = `app-row ${app.tapped ? 'tapped border-white/10 bg-[#152033]' : 'disabled border-white/5 bg-[#152033]/50 opacity-60'} ${app.isPlaying ? 'playing' : ''} ${app.expanded ? 'expanded border-sky-400/40 bg-[#1C2B45]' : ''} ${app.muted ? 'muted' : ''} flex flex-col rounded-xl border transition-all duration-150`;
         row.id = `row-${app.id}`;
         
         row.innerHTML = `
-          <!-- Row Header -->
-          <div class="row-header" onclick="handleRowHeaderClick('${app.id}')">
-            <div class="app-icon">${SVG_ICONS[app.icon]}</div>
-            <div class="app-info">
-              <span class="app-name">${app.name}</span>
-              <span class="app-status"></span>
-            </div>
-            
-            <!-- VU Meter -->
-            <div class="vu-meter" id="vu-${app.id}">
-              <div class="vu-bar"></div>
-              <div class="vu-bar"></div>
-              <div class="vu-bar"></div>
-              <div class="vu-bar"></div>
-              <div class="vu-bar"></div>
-              <div class="vu-bar"></div>
+          <div class="row-header flex cursor-pointer items-center justify-between p-2.5 text-xs select-none" onclick="handleRowHeaderClick('${app.id}')">
+            <div class="flex items-center gap-2.5">
+              <div class="flex h-6 w-6 items-center justify-center overflow-hidden rounded">${SVG_ICONS[app.icon]}</div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-display text-xs font-bold text-white">${app.name}</span>
+                <span class="app-status-dot hidden h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34D399]"></span>
+              </div>
             </div>
 
-            <div class="row-actions" onclick="event.stopPropagation()">
-              <!-- Power Capture Button -->
-              <button class="power-btn" onclick="toggleAppCapture('${app.id}')" title="${app.tapped ? 'Tắt capture âm thanh' : 'Bật capture âm thanh'}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
-                </svg>
-              </button>
+            <div class="flex items-center gap-2">
+              <div class="vu-meter flex h-3 w-7 items-end gap-[2px]" id="vu-${app.id}">
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+              </div>
 
-              <!-- Chevron Expand Button -->
-              <button class="expand-btn" id="expand-btn-${app.id}" onclick="toggleRowExpand('${app.id}')" ${!app.tapped ? 'disabled' : ''} title="Chi tiết thiết lập">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
+              <div class="flex items-center gap-1.5" onclick="event.stopPropagation()">
+                <button class="power-btn flex items-center justify-center text-slate-500 hover:scale-110 hover:text-sky-400 ${app.tapped ? 'text-sky-400' : ''}" onclick="toggleAppCapture('${app.id}')" title="${app.tapped ? 'Tắt capture' : 'Bật capture'}">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
+                  </svg>
+                </button>
+
+                <button class="expand-btn flex h-5 w-5 items-center justify-center rounded-full text-slate-400 hover:bg-white/10 disabled:opacity-20" id="expand-btn-${app.id}" onclick="toggleRowExpand('${app.id}')" ${!app.tapped ? 'disabled' : ''} title="Chi tiết thiết lập">
+                  <svg class="expand-icon h-2.5 w-2.5 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Expanded Details -->
-          <div class="row-details">
-            <!-- Route Section -->
-            <div class="route-section">
-              <span class="route-label">
-                <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l7-7-7-7"/></svg>
+          <div class="row-details ${app.expanded && app.tapped ? 'flex' : 'hidden'} flex-col gap-2.5 border-t border-white/10 bg-black/20 p-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1 font-display text-[10px] font-extrabold tracking-wider text-slate-400">
+                <svg class="h-3 w-3 fill-sky-400" viewBox="0 0 24 24"><path d="M19 12H5M12 19l7-7-7-7"/></svg>
                 ROUTE TO
               </span>
-              <select class="device-picker" onchange="changeAppRoute('${app.id}', this.value)" style="margin-left:auto;">
-                <option value="default" ${app.outputDevice === 'default' ? 'selected' : ''}>Use System Default</option>
-                <option value="speakers" ${app.outputDevice === 'speakers' ? 'selected' : ''}>MacBook Pro Speakers</option>
+              <select class="max-w-[130px] appearance-none rounded border border-white/10 bg-[#0E1626] px-1.5 py-0.5 text-[10px] font-semibold text-slate-200 outline-none hover:border-sky-400/40" onchange="changeAppRoute('${app.id}', this.value)">
+                <option value="default" ${app.outputDevice === 'default' ? 'selected' : ''}>System Default</option>
+                <option value="speakers" ${app.outputDevice === 'speakers' ? 'selected' : ''}>MacBook Speakers</option>
                 <option value="headphones" ${app.outputDevice === 'headphones' ? 'selected' : ''}>AirPods Max</option>
-                <option value="display" ${app.outputDevice === 'display' ? 'selected' : ''}>Studio Display Loa</option>
+                <option value="display" ${app.outputDevice === 'display' ? 'selected' : ''}>Studio Display</option>
               </select>
             </div>
 
-            <!-- Volume Slider Section -->
-            <div class="volume-section">
-              <button class="mute-btn ${app.muted ? 'muted' : ''}" onclick="toggleAppMute('${app.id}')">
+            <div class="flex items-center gap-2">
+              <button class="mute-btn flex h-4 w-4 items-center justify-center text-sky-400 ${app.muted ? 'text-slate-500' : ''}" onclick="toggleAppMute('${app.id}')">
                 ${app.muted ? 
-                  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-9 5.77H1v6h4l5 5V4L5 9z"/></svg>` :
-                  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`
+                  `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-9 5.77H1v6h4l5 5V4L5 9z"/></svg>` :
+                  `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`
                 }
               </button>
               
-              <div class="vol-slider-wrap">
-                <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${app.volume}" oninput="changeAppVolume('${app.id}', this.value)">
+              <div class="relative flex-1">
+                <input type="range" class="vol-slider h-1 w-full cursor-pointer appearance-none rounded bg-white/15 outline-none accent-sky-400" min="0" max="2" step="0.05" value="${app.volume}" oninput="changeAppVolume('${app.id}', this.value)">
               </div>
-              <span class="vol-percentage" id="vol-pct-${app.id}">${Math.round(app.volume * 100)}%</span>
+              <span class="w-8 text-right font-mono text-[10px] text-slate-400" id="vol-pct-${app.id}">${Math.round(app.volume * 100)}%</span>
 
-              <!-- EQ Bypass Switch -->
-              <button class="eq-bypass-btn ${app.eqBypassed ? 'bypassed' : ''}" onclick="toggleEQBypass('${app.id}')">
+              <button class="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 text-[9px] font-bold text-sky-400 ${app.eqBypassed ? 'border-white/10 bg-white/5 text-slate-500' : ''}" onclick="toggleEQBypass('${app.id}')">
                 ${app.eqBypassed ? 'Bypassed' : 'EQ On'}
               </button>
             </div>
 
-            <!-- EQ Canvas Curve Section -->
-            <div class="eq-panel ${app.eqBypassed ? 'hidden' : ''}" id="eq-panel-${app.id}">
-              <div class="eq-svg-container" id="eq-container-${app.id}">
-                <svg id="eq-svg-${app.id}" viewBox="0 0 320 80">
+            <div class="eq-panel ${app.eqBypassed ? 'hidden' : 'flex'} flex-col gap-1" id="eq-panel-${app.id}">
+              <div class="relative h-20 w-full overflow-hidden rounded border border-white/10 bg-black/30" id="eq-container-${app.id}">
+                <svg id="eq-svg-${app.id}" viewBox="0 0 320 80" class="h-full w-full">
                   <defs>
                     <linearGradient id="eq-grad-${app.id}" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.3"/>
-                      <stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/>
+                      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35"/>
+                      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
                     </linearGradient>
                   </defs>
-                  <!-- Helper Lines -->
                   <line x1="0" y1="10" x2="320" y2="10" stroke="rgba(255,255,255,0.04)" stroke-dasharray="2,2"/>
                   <line x1="0" y1="40" x2="320" y2="40" stroke="rgba(255,255,255,0.1)"/>
                   <line x1="0" y1="70" x2="320" y2="70" stroke="rgba(255,255,255,0.04)" stroke-dasharray="2,2"/>
                   
-                  <!-- Filled Curve Area -->
                   <path id="eq-fill-${app.id}" d="" fill="url(#eq-grad-${app.id})"/>
-                  <!-- Curve Stroke Line -->
-                  <path id="eq-line-${app.id}" d="" fill="none" stroke="var(--primary)" stroke-width="1.5"/>
-                  
-                  <!-- Handle dots will be appended by JS -->
+                  <path id="eq-line-${app.id}" d="" fill="none" stroke="#38BDF8" stroke-width="1.8"/>
                 </svg>
               </div>
-              <div class="eq-freq-labels">
-                <span>32</span>
-                <span>64</span>
-                <span>125</span>
-                <span>250</span>
-                <span>500</span>
-                <span>1k</span>
-                <span>2k</span>
-                <span>4k</span>
-                <span>8k</span>
-                <span>16k</span>
+              <div class="flex justify-between px-1 font-mono text-[7.5px] text-slate-500">
+                <span>32</span><span>64</span><span>125</span><span>250</span><span>500</span><span>1k</span><span>2k</span><span>4k</span><span>8k</span><span>16k</span>
               </div>
             </div>
           </div>
@@ -1806,48 +544,38 @@ cd voice-macos
       });
     }
 
-    // Toggle Capture (Power button)
     function toggleAppCapture(id) {
       const app = state.apps.find(a => a.id === id);
       app.tapped = !app.tapped;
       if (!app.tapped) {
         app.expanded = false;
-        app.activePreset = 'Flat';
         app.eqBands = [...PRESETS['Flat']];
       } else {
-        // Automatically expand on capture if no other is expanded, or just expand itself
         app.expanded = true;
-        // Sync current active preset
         app.eqBands = [...PRESETS[state.activePreset]];
       }
       renderAppsList();
     }
 
-    // Toggle Expand details
     function toggleRowExpand(id) {
       const app = state.apps.find(a => a.id === id);
-      if (!app.tapped) return; // Only allow expand if tapped (captured)
-      
+      if (!app.tapped) return;
       app.expanded = !app.expanded;
       renderAppsList();
     }
     
-    // Header click expansion toggle fallback
     function handleRowHeaderClick(id) {
-      // If user clicks the row header itself, toggle expansion
       const app = state.apps.find(a => a.id === id);
       if (app.tapped) {
         toggleRowExpand(id);
       }
     }
 
-    // Change Volume
     function changeAppVolume(id, val) {
       const app = state.apps.find(a => a.id === id);
       app.volume = parseFloat(val);
       document.getElementById(`vol-pct-${id}`).innerText = `${Math.round(app.volume * 100)}%`;
       
-      // Auto unmute if they drag volume up from 0
       if (app.volume > 0 && app.muted) {
         toggleAppMute(id);
       } else if (app.volume === 0 && !app.muted) {
@@ -1855,27 +583,23 @@ cd voice-macos
       }
     }
 
-    // Toggle Mute
     function toggleAppMute(id) {
       const app = state.apps.find(a => a.id === id);
       app.muted = !app.muted;
       renderAppsList();
     }
 
-    // Change output device routing
     function changeAppRoute(id, val) {
       const app = state.apps.find(a => a.id === id);
       app.outputDevice = val;
     }
 
-    // Toggle EQ Bypass
     function toggleEQBypass(id) {
       const app = state.apps.find(a => a.id === id);
       app.eqBypassed = !app.eqBypassed;
       renderAppsList();
     }
 
-    // Natural Cubic Spline / Bezier solver for rendering EQ curve path
     function getBezierCurve(points) {
       if (points.length === 0) return "";
       let d = `M ${points[0].x} ${points[0].y}`;
@@ -1883,7 +607,6 @@ cd voice-macos
         const p1 = points[i];
         const p2 = points[i + 1];
         
-        // Simple cubic bezier interpolation control points
         const cpX1 = p1.x + (p2.x - p1.x) / 3;
         const cpY1 = p1.y;
         const cpX2 = p1.x + (p2.x - p1.x) * 2 / 3;
@@ -1894,7 +617,6 @@ cd voice-macos
       return d;
     }
 
-    // Render EQ Graph curves and interaction nodes
     function updateEQGraph(appId) {
       const app = state.apps.find(a => a.id === appId);
       const svg = document.getElementById(`eq-svg-${appId}`);
@@ -1905,19 +627,15 @@ cd voice-macos
       const numBands = 10;
       const step = width / (numBands - 1);
       
-      // Calculate coordinates for the 10 bands
-      // Y-axis coordinates: Y=40 is 0dB, Y=10 is +12dB (max boost), Y=70 is -12dB (max cut)
       const points = app.eqBands.map((db, idx) => {
         const x = idx * step;
-        const y = 40 - (db * 30 / 12); // map -12 to 12 db to 70 to 10 y-range
+        const y = 40 - (db * 30 / 12);
         return { x, y };
       });
 
-      // Clear existing circles
       const existingCircles = svg.querySelectorAll('circle');
       existingCircles.forEach(c => c.remove());
 
-      // Get smooth bezier curve
       const linePath = getBezierCurve(points);
       const strokeD = linePath;
       const fillD = `${linePath} L ${width} ${height} L 0 ${height} Z`;
@@ -1925,17 +643,15 @@ cd voice-macos
       document.getElementById(`eq-line-${appId}`).setAttribute('d', strokeD);
       document.getElementById(`eq-fill-${appId}`).setAttribute('d', fillD);
 
-      // Append interactive SVG circles
       points.forEach((pt, idx) => {
         const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         circle.setAttribute('cx', pt.x);
         circle.setAttribute('cy', pt.y);
         circle.setAttribute('r', '4');
-        circle.setAttribute('fill', 'var(--primary)');
-        circle.setAttribute('style', 'cursor: ns-resize; filter: drop-shadow(0 0 2px rgba(0, 242, 254, 0.7));');
+        circle.setAttribute('fill', '#38BDF8');
+        circle.setAttribute('style', 'cursor: ns-resize; filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.8));');
         circle.setAttribute('data-idx', idx);
         
-        // Handle drag events
         circle.addEventListener('mousedown', (e) => startDrag(e, appId, idx));
         circle.addEventListener('touchstart', (e) => startDrag(e, appId, idx));
 
@@ -1943,7 +659,6 @@ cd voice-macos
       });
     }
 
-    // Drag calculations
     function startDrag(e, appId, idx) {
       e.stopPropagation();
       e.preventDefault();
@@ -1952,7 +667,6 @@ cd voice-macos
       
       document.addEventListener('mousemove', drag);
       document.addEventListener('mouseup', endDrag);
-      
       document.addEventListener('touchmove', drag, { passive: false });
       document.addEventListener('touchend', endDrag);
     }
@@ -1972,22 +686,14 @@ cd voice-macos
         clientY = e.clientY;
       }
       
-      // Calculate relative Y percentage inside the SVG
       const relativeY = clientY - rect.top;
       const svgHeight = rect.height;
-      const yVal = (relativeY / svgHeight) * 80; // normalized to 80 unit coordinate system
+      const yVal = (relativeY / svgHeight) * 80;
       
-      // Clamp Y coordinate between 10 (+12dB) and 70 (-12dB)
       const clampedY = Math.max(10, Math.min(70, yVal));
-      
-      // Convert back to dB value
       const db = ((40 - clampedY) * 12) / 30;
       
-      // Update app's EQ band value
-      app.eqBands[dragNode] = Math.round(db * 2) / 2; // round to nearest 0.5dB
-      
-
-      
+      app.eqBands[dragNode] = Math.round(db * 2) / 2;
       updateEQGraph(dragAppId);
     }
 
@@ -1996,12 +702,10 @@ cd voice-macos
       dragAppId = null;
       document.removeEventListener('mousemove', drag);
       document.removeEventListener('mouseup', endDrag);
-      
       document.removeEventListener('touchmove', drag);
       document.removeEventListener('touchend', endDrag);
     }
 
-    // Simulated VU Meter Animation Loop
     function animateVUMeters() {
       state.apps.forEach(app => {
         const vuContainer = document.getElementById(`vu-${app.id}`);
@@ -2012,15 +716,13 @@ cd voice-macos
         
         bars.forEach((bar, idx) => {
           if (isActive) {
-            // Random bounce levels
             const minHeight = 2;
             const maxHeight = 12;
             const randomVal = Math.random();
             let height = minHeight + (randomVal * (maxHeight - minHeight));
             
-            // Bias levels based on index (simulating real spectrum behavior)
-            if (idx > 4) height = height * 0.6; // highs
-            else if (idx > 3) height = height * 0.8; // mid-highs
+            if (idx > 4) height = height * 0.6;
+            else if (idx > 3) height = height * 0.8;
             
             bar.style.height = `${height}px`;
           } else {
@@ -2032,14 +734,12 @@ cd voice-macos
       requestAnimationFrame(animateVUMeters);
     }
 
-    // Copy text utility function
     function copySnippet(button, elementId) {
       const codeElement = document.getElementById(elementId);
       const textToCopy = codeElement.innerText;
       
       navigator.clipboard.writeText(textToCopy).then(() => {
         button.classList.add('copied');
-        
         setTimeout(() => {
           button.classList.remove('copied');
         }, 2000);
@@ -2048,9 +748,8 @@ cd voice-macos
       });
     }
 
-    // Eye Rest Timer State
     const eyeRest = {
-      phase: 'idle', // 'idle', 'studying', 'breaking'
+      phase: 'idle',
       studyMin: 25,
       breakMin: 5,
       remaining: 0,
@@ -2066,18 +765,16 @@ cd voice-macos
       const breakInput = document.getElementById('eye-rest-break');
 
       if (eyeRest.phase === 'idle') {
-        // Start the timer
         eyeRest.studyMin = parseInt(studyInput.value) || 25;
         eyeRest.breakMin = parseInt(breakInput.value) || 5;
         eyeRest.phase = 'studying';
         eyeRest.remaining = eyeRest.studyMin * 60;
 
-        // UI update
-        btn.className = 'eye-rest-btn stop';
+        btn.className = 'flex items-center justify-center gap-1.5 rounded-lg bg-red-500/20 p-1.5 text-xs font-bold text-red-400 transition hover:bg-red-500/30';
         btnText.innerText = 'Dừng';
-        btnIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; // Stop icon SVG
+        btnIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
         
-        badge.className = 'eye-rest-badge studying';
+        badge.className = 'flex items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400';
         badge.style.display = 'flex';
         updateEyeRestBadge();
 
@@ -2086,15 +783,13 @@ cd voice-macos
 
         eyeRest.timer = setInterval(tickEyeRest, 1000);
       } else {
-        // Stop the timer
         clearInterval(eyeRest.timer);
         eyeRest.timer = null;
         eyeRest.phase = 'idle';
 
-        // UI update
-        btn.className = 'eye-rest-btn start';
+        btn.className = 'flex items-center justify-center gap-1.5 rounded-lg bg-sky-400 p-1.5 text-xs font-bold text-slate-950 transition hover:bg-sky-300';
         btnText.innerText = 'Bắt đầu';
-        btnIcon.innerHTML = '<path d="M8 5v14l11-7z"/>'; // Play icon SVG
+        btnIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
         
         badge.style.display = 'none';
 
@@ -2108,15 +803,13 @@ cd voice-macos
 
       if (eyeRest.remaining <= 0) {
         if (eyeRest.phase === 'studying') {
-          // Switch to break phase
           eyeRest.phase = 'breaking';
           eyeRest.remaining = eyeRest.breakMin * 60;
-          document.getElementById('eye-rest-status-badge').className = 'eye-rest-badge breaking';
+          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-red-400';
         } else {
-          // Switch back to study phase
           eyeRest.phase = 'studying';
           eyeRest.remaining = eyeRest.studyMin * 60;
-          document.getElementById('eye-rest-status-badge').className = 'eye-rest-badge studying';
+          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400';
         }
       }
 
@@ -2136,7 +829,6 @@ cd voice-macos
       }
     }
 
-    // Init App
     renderAppsList();
     animateVUMeters();
   </script>

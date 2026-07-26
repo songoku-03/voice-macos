@@ -40,7 +40,7 @@ public struct PopoverContentView: View {
                     .font(.system(size: 15, weight: .black))
                     .foregroundStyle(DS.accentGradient)
                 
-                Text("Minh Thw ☁️")
+                Text("SoundsSource")
                     .font(DSFont.wordmark)
                     .foregroundStyle(DS.textPrimary)
 

@@ -1,12 +1,12 @@
-import XCTest
+import Testing
 import AVFoundation
 import CoreAudio
 @testable import Engine
 @testable import Core
 
-@available(macOS 14.2, *)
-final class AppAudioNodeSafetyTests: XCTestCase {
-    func testAppAudioNodeDeinitWhileEngineRunning() throws {
+@Suite
+struct AppAudioNodeSafetyTests {
+    @Test func appAudioNodeDeinitWhileEngineRunning() throws {
         let sampleRate: Double = 48000.0
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
         let engine = AVAudioEngine()
@@ -27,7 +27,7 @@ final class AppAudioNodeSafetyTests: XCTestCase {
         
         do {
             let appNode = AppAudioNode(ringBuffers: [ringBuffer], sourceFormat: tapASBD, engineFormat: format)
-            XCTAssertNotNil(appNode)
+            #expect(appNode != nil)
             sourceNode = appNode?.sourceNode
             
             engine.attach(sourceNode!)

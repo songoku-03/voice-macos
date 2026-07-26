@@ -1,14 +1,13 @@
-import XCTest
+import Testing
 import AVFoundation
 import CoreAudio
 import AppKit
 @testable import Engine
 @testable import Core
 
-@available(macOS 14.2, *)
-final class AudioEngineIntegrationTests: XCTestCase {
+@Suite @MainActor
+struct AudioEngineIntegrationTests {
     
-    @MainActor
     private func createTestManager() -> AudioEngineManager {
         let manager = AudioEngineManager()
         #if DEBUG
@@ -29,7 +28,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         return manager
     }
     
-    func testOfflineRenderingFlow() throws {
+    @Test func offlineRenderingFlow() throws {
         let sampleRate: Double = 48000.0
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
         
@@ -56,7 +55,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         let bytesWritten = sineData.withUnsafeBufferPointer { ptr in
             ringBuffer.write(ptr.baseAddress!, byteCount: framesCount * 2 * MemoryLayout<Float>.size)
         }
-        XCTAssertEqual(bytesWritten, framesCount * 2 * MemoryLayout<Float>.size)
+        #expect(bytesWritten == framesCount * 2 * MemoryLayout<Float>.size)
         
         // 3. Create AppAudioNode (input: 48000Hz stereo interleaved float)
         var tapASBD = AudioStreamBasicDescription()
@@ -70,7 +69,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         tapASBD.mBitsPerChannel = 32
         
         guard let appNode = AppAudioNode(ringBuffers: [ringBuffer], sourceFormat: tapASBD, engineFormat: format) else {
-            XCTFail("Failed to create AppAudioNode")
+            Issue.record("Failed to create AppAudioNode")
             return
         }
         
@@ -92,8 +91,8 @@ final class AudioEngineIntegrationTests: XCTestCase {
         
         // 7. Render 512 frames offline
         let status = try engine.renderOffline(512, to: renderBuffer)
-        XCTAssertEqual(status, .success)
-        XCTAssertEqual(renderBuffer.frameLength, 512)
+        #expect(status == .success)
+        #expect(renderBuffer.frameLength == 512)
         
         // 8. Analyze render buffer (calculate Root Mean Square - RMS)
         var sumSquares: Float = 0.0
@@ -108,7 +107,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         let rms = sqrt(sumSquares / Float(512 * 2))
         
         print("AudioEngineIntegrationTests: RMS with volume 1.0 = \(rms)")
-        XCTAssertGreaterThan(rms, 0.001, "Audio output is silent, but should contain sound samples!")
+        #expect(rms > 0.001, "Audio output is silent, but should contain sound samples!")
         
         // 9. Test Volume Control (Set volume to 0.0 / mute)
         appNode.volume = 0.0
@@ -116,7 +115,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         // Render next 512 frames
         let renderBufferMuted = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512)!
         let statusMuted = try engine.renderOffline(512, to: renderBufferMuted)
-        XCTAssertEqual(statusMuted, .success)
+        #expect(statusMuted == .success)
         
         var sumSquaresMuted: Float = 0.0
         let channelDataMuted = renderBufferMuted.floatChannelData!
@@ -130,32 +129,30 @@ final class AudioEngineIntegrationTests: XCTestCase {
         let rmsMuted = sqrt(sumSquaresMuted / Float(512 * 2))
         
         print("AudioEngineIntegrationTests: RMS with volume 0.0 = \(rmsMuted)")
-        XCTAssertLessThan(rmsMuted, 0.00001, "Audio output should be silent when volume is 0.0!")
+        #expect(rmsMuted < 0.00001, "Audio output should be silent when volume is 0.0!")
         
         // Stop engine
         engine.stop()
     }
 
-    @MainActor
-    func testStatePersistence() throws {
+    @Test func statePersistence() throws {
         UserDefaults.standard.removeObject(forKey: "selectedDeviceUID")
         let manager = AudioEngineManager()
         
         // Set explicitly to false
         manager.followsSystemDefault = false
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: "followsSystemDefault"))
+        #expect(!UserDefaults.standard.bool(forKey: "followsSystemDefault"))
         
         // Test that setting selectedDeviceID saves the UID if it matches a known device
         if let firstDevice = manager.outputDevices.first {
             manager.selectedDeviceID = kAudioObjectUnknown
             manager.selectedDeviceID = firstDevice.deviceID
-            XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedDeviceUID"), firstDevice.uid)
-            XCTAssertFalse(manager.followsSystemDefault)
+            #expect(UserDefaults.standard.string(forKey: "selectedDeviceUID") == firstDevice.uid)
+            #expect(!manager.followsSystemDefault)
         }
     }
     
-    @MainActor
-    func testSleepWakeNotifications() throws {
+    @Test func sleepWakeNotifications() throws {
         let nc = NSWorkspace.shared.notificationCenter
         
         // Post sleep notification to test notification handling path
@@ -165,8 +162,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         nc.post(name: NSWorkspace.didWakeNotification, object: nil)
     }
     
-    @MainActor
-    func testEngineConfigurationChangeNotification() throws {
+    @Test func engineConfigurationChangeNotification() throws {
         let mockEngine = AVAudioEngine()
         
         // Post the configuration change notification
@@ -176,8 +172,7 @@ final class AudioEngineIntegrationTests: XCTestCase {
         )
     }
 
-    @MainActor
-    func testInvalidDeviceUIDPersistence() throws {
+    @Test func invalidDeviceUIDPersistence() throws {
         // Set invalid device UID in UserDefaults
         UserDefaults.standard.set(false, forKey: "followsSystemDefault")
         UserDefaults.standard.set("NonExistentDeviceUID_12345", forKey: "selectedDeviceUID")
@@ -193,14 +188,14 @@ final class AudioEngineIntegrationTests: XCTestCase {
         var sysDefault = kAudioObjectUnknown
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &sysDefault)
-        XCTAssertEqual(status, noErr)
-        XCTAssertEqual(manager.selectedDeviceID, sysDefault)
+        #expect(status == noErr)
+        #expect(manager.selectedDeviceID == sysDefault)
         
         // But followsSystemDefault should remain false (since savedFollows was false)
-        XCTAssertFalse(manager.followsSystemDefault)
+        #expect(!manager.followsSystemDefault)
         
         // And now selectedDeviceUID in UserDefaults should not be overwritten
-        XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedDeviceUID"), "NonExistentDeviceUID_12345")
+        #expect(UserDefaults.standard.string(forKey: "selectedDeviceUID") == "NonExistentDeviceUID_12345")
     }
     
     private func getEngineDeviceIDs(from manager: AudioEngineManager) -> Set<AudioDeviceID> {
@@ -226,15 +221,14 @@ final class AudioEngineIntegrationTests: XCTestCase {
         return [:]
     }
 
-    @MainActor
-    func testSleepWakeStateRestoration() throws {
+    @Test func sleepWakeStateRestoration() throws {
         let manager = createTestManager()
         
         // Populate activePIDs by calling startAppTapping
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
         
         let activePIDs = getActivePIDs(from: manager)
-        XCTAssertEqual(activePIDs["com.apple.Safari"], 99999)
+        #expect(activePIDs["com.apple.Safari"] == 99999)
         
         // Post sleep notification to test notification handling path
         let nc = NSWorkspace.shared.notificationCenter
@@ -242,18 +236,17 @@ final class AudioEngineIntegrationTests: XCTestCase {
         
         // Verify engines map is cleared on sleep
         let engines = getEngineDeviceIDs(from: manager)
-        XCTAssertTrue(engines.isEmpty)
+        #expect(engines.isEmpty)
         
         // Post wake notification
         nc.post(name: NSWorkspace.didWakeNotification, object: nil)
         
         // Verify activePIDs is restored/repopulated after wake
         let postWakePIDs = getActivePIDs(from: manager)
-        XCTAssertEqual(postWakePIDs["com.apple.Safari"], 99999)
+        #expect(postWakePIDs["com.apple.Safari"] == 99999)
     }
     
-    @MainActor
-    func testRapidSleepWakeCycles() throws {
+    @Test func rapidSleepWakeCycles() throws {
         let manager = createTestManager()
         let nc = NSWorkspace.shared.notificationCenter
         
@@ -265,38 +258,35 @@ final class AudioEngineIntegrationTests: XCTestCase {
         }
         
         let activePIDs = getActivePIDs(from: manager)
-        XCTAssertEqual(activePIDs["com.apple.Safari"], 99999)
+        #expect(activePIDs["com.apple.Safari"] == 99999)
     }
     
-    @MainActor
-    func testActivePIDsCleanupOnTapFailure() throws {
+    @Test func activePIDsCleanupOnTapFailure() throws {
         let manager = AudioEngineManager()
         // Try tapping a non-existent app bundle ID, which should fail
         manager.startAppTapping(bundleID: "com.example.NonExistentApp", pid: 12345)
         
         let pids = getActivePIDs(from: manager)
-        XCTAssertNil(pids["com.example.NonExistentApp"], "The bundleID should not be present in activePIDs after tap failure")
+        #expect(pids["com.example.NonExistentApp"] == nil, "The bundleID should not be present in activePIDs after tap failure")
     }
     
-    @MainActor
-    func testCleanupUnpluggedEnginesResetsAppOutputDevices() throws {
+    @Test func cleanupUnpluggedEnginesResetsAppOutputDevices() throws {
         let manager = AudioEngineManager()
         
         let unpluggedDeviceID: AudioDeviceID = 9999
         
         // Set an app output device to this unplugged device
         manager.setAppOutputDevice(bundleID: "com.example.InactiveApp", deviceID: unpluggedDeviceID)
-        XCTAssertEqual(manager.getAppOutputDevice(bundleID: "com.example.InactiveApp"), unpluggedDeviceID)
+        #expect(manager.getAppOutputDevice(bundleID: "com.example.InactiveApp") == unpluggedDeviceID)
         
         // Trigger cleanup
         manager.testExposeCleanupUnpluggedEngines()
         
         // It should reset to kAudioObjectUnknown
-        XCTAssertEqual(manager.getAppOutputDevice(bundleID: "com.example.InactiveApp"), kAudioObjectUnknown)
+        #expect(manager.getAppOutputDevice(bundleID: "com.example.InactiveApp") == kAudioObjectUnknown)
     }
     
-    @MainActor
-    func testCleanupIdleEnginesBypassesConfiguringDevice() throws {
+    @Test func cleanupIdleEnginesBypassesConfiguringDevice() throws {
         let manager = AudioEngineManager()
         
         let deviceID: AudioDeviceID = 8888
@@ -304,31 +294,30 @@ final class AudioEngineIntegrationTests: XCTestCase {
         // Create an engine for the device (it will be in engines map)
         _ = manager.testExposeGetEngine(for: deviceID)
         let initialCount = manager.testExposeEnginesCount()
-        XCTAssertGreaterThanOrEqual(initialCount, 2)
+        #expect(initialCount >= 2)
         
         // Ordinarily, deviceID is not selected and has no active routes, so it will be cleaned up
         manager.testExposeCleanupIdleEngines()
-        XCTAssertEqual(manager.testExposeEnginesCount(), initialCount - 1)
+        #expect(manager.testExposeEnginesCount() == initialCount - 1)
         
         // Add it back
         _ = manager.testExposeGetEngine(for: deviceID)
-        XCTAssertEqual(manager.testExposeEnginesCount(), initialCount)
+        #expect(manager.testExposeEnginesCount() == initialCount)
         
         // Set configuration change in progress for deviceID
         manager.testExposeSetDeviceChangingConfig(deviceID, isChanging: true)
         
         // Attempt clean up - it should NOT clean it up
         manager.testExposeCleanupIdleEngines()
-        XCTAssertEqual(manager.testExposeEnginesCount(), initialCount)
+        #expect(manager.testExposeEnginesCount() == initialCount)
         
         // Stop configuration change and clean up - now it should clean it up
         manager.testExposeSetDeviceChangingConfig(deviceID, isChanging: false)
         manager.testExposeCleanupIdleEngines()
-        XCTAssertEqual(manager.testExposeEnginesCount(), initialCount - 1)
+        #expect(manager.testExposeEnginesCount() == initialCount - 1)
     }
 
-    @MainActor
-    func testNewAppTappedDuringBreakIsDucked() throws {
+    @Test func newAppTappedDuringBreakIsDucked() async throws {
         let manager = createTestManager()
         let btm = BreakTimerManager.shared
         
@@ -356,37 +345,26 @@ final class AudioEngineIntegrationTests: XCTestCase {
         // Wait for the timer to tick and transition through warning to breaking.
         // It takes at least 11-12 seconds because warningThreshold is 10 seconds.
         // We will wait up to 15 seconds.
-        let expectation = XCTestExpectation(description: "Wait for break phase")
-        
         let startTime = Date()
-        func checkPhase() {
-            if btm.phase == .breaking {
-                expectation.fulfill()
-            } else if Date().timeIntervalSince(startTime) > 15 {
-                XCTFail("Failed to transition to breaking phase. Current phase: \(btm.phase)")
-                expectation.fulfill()
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    checkPhase()
-                }
+        while btm.phase != .breaking {
+            if Date().timeIntervalSince(startTime) > 15 {
+                Issue.record("Failed to transition to breaking phase. Current phase: \(btm.phase)")
+                break
             }
+            try await Task.sleep(for: .milliseconds(500))
         }
         
-        checkPhase()
-        wait(for: [expectation], timeout: 16.0)
-        
-        XCTAssertEqual(btm.phase, .breaking, "Should be in breaking phase")
+        #expect(btm.phase == .breaking, "Should be in breaking phase")
         
         // Now tap a new app Safari (which should succeed/simulate tapping)
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
         
         // Verify if the volume is ducked.
         let volume = manager.getVolume(bundleID: "com.apple.Safari")
-        XCTAssertEqual(volume, 0.1, accuracy: 0.001, "Newly tapped app volume should be ducked during break")
+        #expect(abs(volume - 0.1) < 0.001, "Newly tapped app volume should be ducked during break")
     }
 
-    @MainActor
-    func testRepeatedTappingDuringBreakRetainsOriginalPreBreakVolume() throws {
+    @Test func repeatedTappingDuringBreakRetainsOriginalPreBreakVolume() async throws {
         let manager = AudioEngineManager.shared
         let btm = BreakTimerManager.shared
         
@@ -433,25 +411,17 @@ final class AudioEngineIntegrationTests: XCTestCase {
         btm.breakDuration = 5.0
         btm.start()
         
-        let expectation = XCTestExpectation(description: "Wait for break phase")
         let startTime = Date()
-        func checkPhase() {
-            if btm.phase == .breaking {
-                expectation.fulfill()
-            } else if Date().timeIntervalSince(startTime) > 15 {
-                XCTFail("Failed to transition to breaking phase. Current phase: \(btm.phase)")
-                expectation.fulfill()
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    checkPhase()
-                }
+        while btm.phase != .breaking {
+            if Date().timeIntervalSince(startTime) > 15 {
+                Issue.record("Failed to transition to breaking phase. Current phase: \(btm.phase)")
+                break
             }
+            try await Task.sleep(for: .milliseconds(500))
         }
-        checkPhase()
-        wait(for: [expectation], timeout: 16.0)
         
-        XCTAssertEqual(btm.phase, .breaking, "Should be in breaking phase")
-        XCTAssertEqual(manager.getVolume(bundleID: "com.apple.Safari"), 0.08, accuracy: 0.001, "Volume should be ducked")
+        #expect(btm.phase == .breaking, "Should be in breaking phase")
+        #expect(abs(manager.getVolume(bundleID: "com.apple.Safari") - 0.08) < 0.001, "Volume should be ducked")
         
         manager.stopAppTapping(bundleID: "com.apple.Safari")
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
@@ -459,32 +429,30 @@ final class AudioEngineIntegrationTests: XCTestCase {
         btm.stop()
         
         let restoredVolume = manager.getVolume(bundleID: "com.apple.Safari")
-        XCTAssertEqual(restoredVolume, 0.8, accuracy: 0.001, "Volume should be restored to pre-break level 0.8")
+        #expect(abs(restoredVolume - 0.8) < 0.001, "Volume should be restored to pre-break level 0.8")
     }
 
-    @MainActor
-    func testLivenessCheckRemovesInactivePIDs() throws {
+    @Test func livenessCheckRemovesInactivePIDs() throws {
         let manager = createTestManager()
         
         let dummyPID: pid_t = 999999
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: dummyPID)
         
         let pidsBefore = getActivePIDs(from: manager)
-        XCTAssertEqual(pidsBefore["com.apple.Safari"], dummyPID)
+        #expect(pidsBefore["com.apple.Safari"] == dummyPID)
         
         manager.testExposeCheckLiveness()
         
         let pidsAfter = getActivePIDs(from: manager)
-        XCTAssertNil(pidsAfter["com.apple.Safari"], "Inactive PID should be cleaned up by liveness check")
+        #expect(pidsAfter["com.apple.Safari"] == nil, "Inactive PID should be cleaned up by liveness check")
     }
 
-    @MainActor
-    func testAppTerminationNotificationCleansUpTap() throws {
+    @Test func appTerminationNotificationCleansUpTap() throws {
         let manager = createTestManager()
         
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 999999)
         let pidsBefore = getActivePIDs(from: manager)
-        XCTAssertNotNil(pidsBefore["com.apple.Safari"])
+        #expect(pidsBefore["com.apple.Safari"] != nil)
         
         let mockApp = MockRunningApplication(bundleIdentifier: "com.apple.Safari")
         let notification = Notification(
@@ -496,16 +464,15 @@ final class AudioEngineIntegrationTests: XCTestCase {
         NSWorkspace.shared.notificationCenter.post(notification)
         
         let pidsAfter = getActivePIDs(from: manager)
-        XCTAssertNil(pidsAfter["com.apple.Safari"], "Tapped app should be cleaned up on didTerminateApplicationNotification")
+        #expect(pidsAfter["com.apple.Safari"] == nil, "Tapped app should be cleaned up on didTerminateApplicationNotification")
     }
 
-    @MainActor
-    func testAppTerminationCleanup() throws {
+    @Test func appTerminationCleanup() throws {
         let manager = createTestManager()
         
         // 1. Verify workspace notification cleanup flow
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 999999)
-        XCTAssertNotNil(getActivePIDs(from: manager)["com.apple.Safari"])
+        #expect(getActivePIDs(from: manager)["com.apple.Safari"] != nil)
         
         let mockApp = MockRunningApplication(bundleIdentifier: "com.apple.Safari")
         let notification = Notification(
@@ -514,42 +481,43 @@ final class AudioEngineIntegrationTests: XCTestCase {
             userInfo: [NSWorkspace.applicationUserInfoKey: mockApp]
         )
         NSWorkspace.shared.notificationCenter.post(notification)
-        XCTAssertNil(getActivePIDs(from: manager)["com.apple.Safari"], "Should clean up on didTerminateApplicationNotification")
+        #expect(getActivePIDs(from: manager)["com.apple.Safari"] == nil, "Should clean up on didTerminateApplicationNotification")
         
         // 2. Verify watchdog liveness checks flow
         let dummyPID: pid_t = 999999
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: dummyPID)
-        XCTAssertEqual(getActivePIDs(from: manager)["com.apple.Safari"], dummyPID)
+        #expect(getActivePIDs(from: manager)["com.apple.Safari"] == dummyPID)
         
         // Trigger liveness check
         manager.checkTappedProcessesLiveness()
         
-        XCTAssertNil(getActivePIDs(from: manager)["com.apple.Safari"], "Watchdog should clean up dead process")
+        #expect(getActivePIDs(from: manager)["com.apple.Safari"] == nil, "Watchdog should clean up dead process")
     }
 
-    @MainActor
-    func testTeardownCleansUpAllNodesAndTimer() throws {
+    @Test func teardownCleansUpAllNodesAndTimer() throws {
         let manager = createTestManager()
         
         manager.startAppTapping(bundleID: "com.apple.Safari", pid: 999999)
         manager.startAppTapping(bundleID: "com.apple.Finder", pid: 98766)
         
         let pidsBefore = getActivePIDs(from: manager)
-        XCTAssertEqual(pidsBefore.count, 2)
+        #expect(pidsBefore.count == 2)
         
         manager.teardown()
         
         let pidsAfter = getActivePIDs(from: manager)
-        XCTAssertEqual(pidsAfter.count, 0, "All nodes should be cleaned up after teardown")
+        #expect(pidsAfter.count == 0, "All nodes should be cleaned up after teardown")
     }
 }
 
 @available(macOS 14.2, *)
 class MockRunningApplication: NSRunningApplication {
     private let mockBundleID: String
+    private let mockPID: pid_t
     
-    init(bundleIdentifier: String) {
+    init(bundleIdentifier: String, pid: pid_t = 999999) {
         self.mockBundleID = bundleIdentifier
+        self.mockPID = pid
         super.init()
     }
     
@@ -558,6 +526,6 @@ class MockRunningApplication: NSRunningApplication {
     }
     
     override var processIdentifier: pid_t {
-        return 999999
+        return mockPID
     }
 }

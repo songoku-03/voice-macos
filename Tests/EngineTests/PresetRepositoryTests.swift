@@ -1,11 +1,11 @@
-import XCTest
+import Testing
 import Foundation
 @testable import Engine
 
-final class PresetRepositoryTests: XCTestCase {
+@Suite struct PresetRepositoryTests {
     let url = URL(fileURLWithPath: "/virtual/presets.json")
 
-    func testRoundTrip() async throws {
+    @Test func roundTrip() async throws {
         let store = InMemoryFileStore()
         let repo = PresetRepository(fileStore: store, fileURL: url)
 
@@ -16,41 +16,41 @@ final class PresetRepositoryTests: XCTestCase {
         try await repo.save(presets)
         let loaded = await repo.load()
 
-        XCTAssertEqual(loaded, presets)
+        #expect(loaded == presets)
     }
 
-    func testLoadMissing() async {
+    @Test func loadMissing() async {
         let repo = PresetRepository(fileStore: InMemoryFileStore(), fileURL: url)
         let loaded = await repo.load()
-        XCTAssertTrue(loaded.isEmpty)
+        #expect(loaded.isEmpty)
     }
 
-    func testLoadCorrupt() async {
+    @Test func loadCorrupt() async {
         let store = InMemoryFileStore(seed: [url: Data("not json".utf8)])
         let repo = PresetRepository(fileStore: store, fileURL: url)
         let loaded = await repo.load()
-        XCTAssertTrue(loaded.isEmpty)
+        #expect(loaded.isEmpty)
     }
 
-    func testSaveError() async {
+    @Test func saveError() async {
         let store = InMemoryFileStore()
         store.writeError = CocoaError(.fileWriteNoPermission)
         let repo = PresetRepository(fileStore: store, fileURL: url)
 
         do {
             try await repo.save([Preset(name: "Flat", isDefault: true, appSettings: [:])])
-            XCTFail("Expected error")
+            Issue.record("Expected error")
         } catch {
             // Expected
         }
     }
 
-    func testSyncLoad() throws {
+    @Test func syncLoad() throws {
         let store = InMemoryFileStore()
         let presets = [Preset(name: "Flat", isDefault: true, appSettings: [:])]
         store.files[url] = try JSONEncoder().encode(presets)
 
         let loaded = PresetRepository.loadSynchronously(fileStore: store, fileURL: url)
-        XCTAssertEqual(loaded, presets)
+        #expect(loaded == presets)
     }
 }

@@ -1,13 +1,12 @@
-import XCTest
+import Testing
 import AVFoundation
 import CoreAudio
 import AppKit
 @testable import Engine
 @testable import Core
 
-@available(macOS 14.2, *)
 @MainActor
-final class AppTapStateSyncStressTests: XCTestCase {
+@Suite struct AppTapStateSyncStressTests {
 
     private func createTestManager() -> AudioEngineManager {
         let manager = AudioEngineManager()
@@ -38,7 +37,7 @@ final class AppTapStateSyncStressTests: XCTestCase {
     }
 
     // 1. Rapidly launching and quitting target applications (Mocked Workspace Notifications)
-    func testStressRapidLaunchAndQuitNotifications() throws {
+    @Test func stressRapidLaunchAndQuitNotifications() throws {
         let manager = createTestManager()
         let iterations = 100
         let bundleID = "com.apple.Safari"
@@ -48,10 +47,10 @@ final class AppTapStateSyncStressTests: XCTestCase {
             
             // Start tapping
             manager.startAppTapping(bundleID: bundleID, pid: pid)
-            XCTAssertEqual(getActivePIDs(from: manager)[bundleID], pid)
+            #expect(getActivePIDs(from: manager)[bundleID] == pid)
 
             // Simulate termination notification
-            let mockApp = MockRunningApplication(bundleIdentifier: bundleID)
+            let mockApp = MockRunningApplication(bundleIdentifier: bundleID, pid: pid)
             let notification = Notification(
                 name: NSWorkspace.didTerminateApplicationNotification,
                 object: nil,
@@ -60,12 +59,12 @@ final class AppTapStateSyncStressTests: XCTestCase {
             NSWorkspace.shared.notificationCenter.post(notification)
 
             // Verify clean up
-            XCTAssertNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] == nil)
         }
     }
 
     // 2. Rapidly toggling the tap/power button (start/stop tapping)
-    func testStressRapidTapToggling() throws {
+    @Test func stressRapidTapToggling() throws {
         let manager = createTestManager()
         let iterations = 200
         let bundleID = "com.apple.Finder"
@@ -73,15 +72,15 @@ final class AppTapStateSyncStressTests: XCTestCase {
 
         for _ in 0..<iterations {
             manager.startAppTapping(bundleID: bundleID, pid: pid)
-            XCTAssertNotNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] != nil)
 
             manager.userStopAppTapping(bundleID: bundleID)
-            XCTAssertNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] == nil)
         }
     }
 
     // 3. Force-quitting (kill -9) target applications while tapping is active (Real Process)
-    func testStressForceQuitRealProcess() throws {
+    @Test func stressForceQuitRealProcess() throws {
         let manager = createTestManager()
         let bundleID = "com.apple.TextEdit"
         
@@ -91,14 +90,14 @@ final class AppTapStateSyncStressTests: XCTestCase {
         try process.run()
         
         let pid = process.processIdentifier
-        XCTAssertGreaterThan(pid, 0)
+        #expect(pid > 0)
         
         // Let it start up
         Thread.sleep(forTimeInterval: 0.5)
         
         // Start tapping
         manager.startAppTapping(bundleID: bundleID, pid: pid)
-        XCTAssertEqual(getActivePIDs(from: manager)[bundleID], pid)
+        #expect(getActivePIDs(from: manager)[bundleID] == pid)
         
         // Kill the process forcefully
         process.terminate() // sends SIGTERM/SIGKILL
@@ -108,11 +107,11 @@ final class AppTapStateSyncStressTests: XCTestCase {
         manager.testExposeCheckLiveness()
         
         // Verify that the dead PID is cleaned up immediately
-        XCTAssertNil(getActivePIDs(from: manager)[bundleID], "Dead process should be cleaned up by watchdog")
+        #expect(getActivePIDs(from: manager)[bundleID] == nil, "Dead process should be cleaned up by watchdog")
     }
 
     // 4. Verify no aggregate device naming/UID collisions or memory leaks during high churn
-    func testStressAggregateDeviceNamingAndChurn() throws {
+    @Test func stressAggregateDeviceNamingAndChurn() throws {
         let manager = createTestManager()
         let bundleID = "com.apple.Safari"
         let pid: pid_t = 999999
@@ -120,9 +119,9 @@ final class AppTapStateSyncStressTests: XCTestCase {
         // Let's run a churn of 100 start/stop cycles
         for _ in 0..<100 {
             manager.startAppTapping(bundleID: bundleID, pid: pid)
-            XCTAssertNotNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] != nil)
             manager.stopAppTapping(bundleID: bundleID)
-            XCTAssertNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] == nil)
         }
     }
 }

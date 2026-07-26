@@ -1,107 +1,107 @@
-import XCTest
+import Testing
 @testable import Core
 
-final class RingBufferTests: XCTestCase {
-    func testBasicRoundTrip() {
+@Suite struct RingBufferTests {
+    @Test func basicRoundTrip() {
         let rb = RingBuffer(capacity: 64)
         let src: [UInt8] = [1, 2, 3, 4, 5]
         let written = src.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: src.count) }
-        XCTAssertEqual(written, 5)
-        XCTAssertEqual(rb.bytesAvailableForRead, 5)
+        #expect(written == 5)
+        #expect(rb.bytesAvailableForRead == 5)
 
         var dst = [UInt8](repeating: 0, count: 5)
         let readCount = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 5) }
-        XCTAssertEqual(readCount, 5)
-        XCTAssertEqual(dst, src)
+        #expect(readCount == 5)
+        #expect(dst == src)
     }
 
-    func testReadUnderflow() {
+    @Test func readUnderflow() {
         let rb = RingBuffer(capacity: 64)
         let src: [UInt8] = [10, 20]
         _ = src.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 2) }
 
         var dst = [UInt8](repeating: 0, count: 5)
         let readCount = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 5) }
-        XCTAssertEqual(readCount, 0)
-        XCTAssertEqual(rb.bytesAvailableForRead, 2, "data untouched")
+        #expect(readCount == 0)
+        #expect(rb.bytesAvailableForRead == 2, "data untouched")
     }
 
-    func testBytesAvailableForWrite() {
+    @Test func bytesAvailableForWrite() {
         let rb = RingBuffer(capacity: 16) // usable = 15
-        XCTAssertEqual(rb.bytesAvailableForWrite, 15)
+        #expect(rb.bytesAvailableForWrite == 15)
 
         let src = [UInt8](repeating: 0xAA, count: 10)
         _ = src.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 10) }
-        XCTAssertEqual(rb.bytesAvailableForWrite, 5)
+        #expect(rb.bytesAvailableForWrite == 5)
     }
 
-    func testWriteDropsEntireBlockWhenBufferIsFull() {
+    @Test func writeDropsEntireBlockWhenBufferIsFull() {
         let rb = RingBuffer(capacity: 8)
         let a = [UInt8](repeating: 0xAA, count: 7)
         _ = a.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 7) }
-        XCTAssertEqual(rb.bytesAvailableForWrite, 0)
+        #expect(rb.bytesAvailableForWrite == 0)
 
         let b: [UInt8] = [0xBB]
         let wrote = b.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 1) }
-        XCTAssertEqual(wrote, 0, "write() drops data when full")
+        #expect(wrote == 0, "write() drops data when full")
     }
 
-    func testWriteOverwritingStoresDataWhenBufferHasSpace() {
+    @Test func writeOverwritingStoresDataWhenBufferHasSpace() {
         let rb = RingBuffer(capacity: 64)
         let src: [UInt8] = [1, 2, 3]
         let wrote = src.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 3) }
-        XCTAssertEqual(wrote, 3)
+        #expect(wrote == 3)
 
         var dst = [UInt8](repeating: 0, count: 3)
         _ = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 3) }
-        XCTAssertEqual(dst, src)
+        #expect(dst == src)
     }
 
-    func testWriteOverwritingDiscardsOldestDataWhenFull() {
+    @Test func writeOverwritingDiscardsOldestDataWhenFull() {
         let rb = RingBuffer(capacity: 8) // usable = 7
         let a: [UInt8] = [1, 2, 3, 4, 5, 6, 7]
         _ = a.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 7) }
 
         let b: [UInt8] = [8, 9, 10]
         let wrote = b.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 3) }
-        XCTAssertEqual(wrote, 3, "writeOverwriting must succeed when full")
+        #expect(wrote == 3, "writeOverwriting must succeed when full")
 
-        XCTAssertEqual(rb.bytesAvailableForRead, 7)
+        #expect(rb.bytesAvailableForRead == 7)
         var dst = [UInt8](repeating: 0, count: 7)
         _ = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 7) }
-        XCTAssertEqual(dst, [4, 5, 6, 7, 8, 9, 10])
+        #expect(dst == [4, 5, 6, 7, 8, 9, 10])
     }
 
-    func testWriteOverwritingPartialSpace() {
+    @Test func writeOverwritingPartialSpace() {
         let rb = RingBuffer(capacity: 8)
         let a: [UInt8] = [1, 2, 3, 4, 5]
         _ = a.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 5) }
 
         let b: [UInt8] = [10, 11, 12, 13]
         let wrote = b.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 4) }
-        XCTAssertEqual(wrote, 4)
+        #expect(wrote == 4)
 
-        XCTAssertEqual(rb.bytesAvailableForRead, 7)
+        #expect(rb.bytesAvailableForRead == 7)
         var dst = [UInt8](repeating: 0, count: 7)
         _ = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 7) }
-        XCTAssertEqual(dst, [3, 4, 5, 10, 11, 12, 13])
+        #expect(dst == [3, 4, 5, 10, 11, 12, 13])
     }
 
-    func testWriteOverwritingRejectsByteCountGreaterThanOrEqualToCapacity() {
+    @Test func writeOverwritingRejectsByteCountGreaterThanOrEqualToCapacity() {
         let rb = RingBuffer(capacity: 8)
         let big = [UInt8](repeating: 0xFF, count: 8)
         let wrote = big.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 8) }
-        XCTAssertEqual(wrote, 0)
+        #expect(wrote == 0)
     }
 
-    func testWriteOverwritingRejectsZeroLength() {
+    @Test func writeOverwritingRejectsZeroLength() {
         let rb = RingBuffer(capacity: 8)
         let src: [UInt8] = [1]
         let wrote = src.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: 0) }
-        XCTAssertEqual(wrote, 0)
+        #expect(wrote == 0)
     }
 
-    func testWrapAroundWriteRead() {
+    @Test func wrapAroundWriteRead() {
         let rb = RingBuffer(capacity: 8)
         let a = [UInt8](repeating: 0xAA, count: 5)
         _ = a.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 5) }
@@ -113,10 +113,10 @@ final class RingBufferTests: XCTestCase {
 
         var dst = [UInt8](repeating: 0, count: 7)
         _ = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 7) }
-        XCTAssertEqual(dst, b)
+        #expect(dst == b)
     }
 
-    func testWriteOverwritingWrapAround() {
+    @Test func writeOverwritingWrapAround() {
         let rb = RingBuffer(capacity: 8)
         let padding = [UInt8](repeating: 0, count: 5)
         _ = padding.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 5) }
@@ -131,20 +131,20 @@ final class RingBufferTests: XCTestCase {
 
         var dst = [UInt8](repeating: 0, count: 7)
         _ = dst.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: 7) }
-        XCTAssertEqual(dst, [4, 5, 6, 7, 8, 9, 10])
+        #expect(dst == [4, 5, 6, 7, 8, 9, 10])
     }
 
-    func testClearResetsBuffer() {
+    @Test func clearResetsBuffer() {
         let rb = RingBuffer(capacity: 16)
         let src = [UInt8](repeating: 0xCC, count: 10)
         _ = src.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: 10) }
-        XCTAssertEqual(rb.bytesAvailableForRead, 10)
+        #expect(rb.bytesAvailableForRead == 10)
         rb.clear()
-        XCTAssertEqual(rb.bytesAvailableForRead, 0)
-        XCTAssertEqual(rb.bytesAvailableForWrite, 15)
+        #expect(rb.bytesAvailableForRead == 0)
+        #expect(rb.bytesAvailableForWrite == 15)
     }
 
-    func testAudioPipelineWriteOverwritingNeverStarvesReader() {
+    @Test func audioPipelineWriteOverwritingNeverStarvesReader() {
         let rb = RingBuffer(capacity: 8192)
         let chunkSize = 960
         var writeData = [UInt8](repeating: 0, count: chunkSize)
@@ -154,26 +154,26 @@ final class RingBufferTests: XCTestCase {
             writeData[0] = UInt8(i & 0xFF)
             _ = writeData.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: chunkSize) }
         }
-        XCTAssertGreaterThan(rb.bytesAvailableForRead, 0, "Buffer must have data")
+        #expect(rb.bytesAvailableForRead > 0, "Buffer must have data")
 
         let available = rb.bytesAvailableForRead
         let chunksToRead = available / chunkSize
-        XCTAssertGreaterThan(chunksToRead, 0, "Reader must find data — not starved")
+        #expect(chunksToRead > 0, "Reader must find data — not starved")
 
         for _ in 0..<chunksToRead {
             let read = readData.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: chunkSize) }
-            XCTAssertEqual(read, chunkSize)
+            #expect(read == chunkSize)
         }
 
         for i in 0..<100 {
             writeData[0] = UInt8(i & 0xFF)
             _ = writeData.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: chunkSize) }
             let read = readData.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: chunkSize) }
-            XCTAssertEqual(read, chunkSize, "Steady-state: reader should always get data")
+            #expect(read == chunkSize, "Steady-state: reader should always get data")
         }
     }
 
-    func testOriginalWriteCausesStarvation() {
+    @Test func originalWriteCausesStarvation() {
         let rb = RingBuffer(capacity: 4096)
         let chunkSize = 960
         var writeData = [UInt8](repeating: 0xAA, count: chunkSize)
@@ -183,10 +183,10 @@ final class RingBufferTests: XCTestCase {
         }
         writeData = [UInt8](repeating: 0xBB, count: chunkSize)
         let dropped = writeData.withUnsafeBytes { rb.write($0.baseAddress!, byteCount: chunkSize) }
-        XCTAssertEqual(dropped, 0, "write() drops data when full — this is the bug")
+        #expect(dropped == 0, "write() drops data when full — this is the bug")
     }
 
-    func testWriteOverwritingNeverDropsUnderPressure() {
+    @Test func writeOverwritingNeverDropsUnderPressure() {
         let rb = RingBuffer(capacity: 4096)
         let chunkSize = 960
         var readData = [UInt8](repeating: 0, count: chunkSize)
@@ -196,8 +196,8 @@ final class RingBufferTests: XCTestCase {
             _ = writeData.withUnsafeBytes { rb.writeOverwriting($0.baseAddress!, byteCount: chunkSize) }
         }
 
-        XCTAssertGreaterThan(rb.bytesAvailableForRead, 0, "writeOverwriting keeps data available")
+        #expect(rb.bytesAvailableForRead > 0, "writeOverwriting keeps data available")
         let read = readData.withUnsafeMutableBytes { rb.read($0.baseAddress!, byteCount: chunkSize) }
-        XCTAssertEqual(read, chunkSize, "Reader gets a full chunk — no starvation")
+        #expect(read == chunkSize, "Reader gets a full chunk — no starvation")
     }
 }

@@ -1,13 +1,12 @@
-import XCTest
+import Testing
 import AVFoundation
 import CoreAudio
 import AppKit
 @testable import Engine
 @testable import Core
 
-@available(macOS 14.2, *)
-@MainActor
-final class StressTests: XCTestCase {
+@Suite @MainActor
+struct StressTests {
     
     private func createTestManager() -> AudioEngineManager {
         let manager = AudioEngineManager()
@@ -38,7 +37,7 @@ final class StressTests: XCTestCase {
     }
 
     // 1. Rapidly launching and quitting target applications (Simulation)
-    func testRapidProcessLaunchAndQuitSimulation() async throws {
+    @Test func rapidProcessLaunchAndQuitSimulation() async throws {
         let manager = createTestManager()
         
         for i in 0..<100 {
@@ -47,7 +46,7 @@ final class StressTests: XCTestCase {
             
             // App launch simulation
             manager.startAppTapping(bundleID: bundleID, pid: pid)
-            XCTAssertNotNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] != nil)
             
             // App termination simulation
             let mockApp = MockRunningApplication(bundleIdentifier: bundleID)
@@ -58,12 +57,12 @@ final class StressTests: XCTestCase {
             )
             NSWorkspace.shared.notificationCenter.post(notification)
             
-            XCTAssertNil(getActivePIDs(from: manager)[bundleID])
+            #expect(getActivePIDs(from: manager)[bundleID] == nil)
         }
     }
 
     // 2. Force-quitting target applications while tapping is active
-    func testForceQuitSimulation() throws {
+    @Test func forceQuitSimulation() throws {
         let manager = createTestManager()
         let bundleID = "com.apple.Safari"
         
@@ -76,7 +75,7 @@ final class StressTests: XCTestCase {
         let pid = process.processIdentifier
         
         manager.startAppTapping(bundleID: bundleID, pid: pid)
-        XCTAssertNotNil(getActivePIDs(from: manager)[bundleID])
+        #expect(getActivePIDs(from: manager)[bundleID] != nil)
         
         // Force-kill the process
         process.terminate()
@@ -86,11 +85,11 @@ final class StressTests: XCTestCase {
         manager.testExposeCheckLiveness()
         
         // Verify that the watchdog cleaned it up
-        XCTAssertNil(getActivePIDs(from: manager)[bundleID], "Tapped app should be cleaned up immediately when the process is force-killed")
+        #expect(getActivePIDs(from: manager)[bundleID] == nil, "Tapped app should be cleaned up immediately when the process is force-killed")
     }
 
     // 3. Rapidly toggling the tap/power button (MainActor concurrency safety check)
-    func testConcurrentTogglingAppTapping() async throws {
+    @Test func concurrentTogglingAppTapping() async throws {
         let manager = createTestManager()
         let bundleID = "com.example.ConcurrentApp"
         let pid: pid_t = 30001
@@ -108,11 +107,11 @@ final class StressTests: XCTestCase {
             }
         }
         
-        XCTAssertNil(getActivePIDs(from: manager)[bundleID], "Tapping should be fully stopped and cleaned up after concurrent toggles")
+        #expect(getActivePIDs(from: manager)[bundleID] == nil, "Tapping should be fully stopped and cleaned up after concurrent toggles")
     }
 
     // 4. Verify no engine stalls, memory leaks, or aggregate device naming collisions under load
-    func testAggDeviceLifecycleStability() async throws {
+    @Test func aggDeviceLifecycleStability() async throws {
         // We test with our own PID because we know it exists and might have a process object ID,
         // or we can test using ProcessTapManager.shared directly if the system permits.
         // Let's call startTapping and stopTapping on ProcessTapManager.shared directly in a loop to stress-test HAL interaction.
@@ -124,9 +123,9 @@ final class StressTests: XCTestCase {
         for _ in 0..<20 {
             if let result = ProcessTapManager.shared.startTapping(bundleID: bundleID, pid: pid) {
                 tapCount += 1
-                XCTAssertNotNil(ProcessTapManager.shared.getRingBuffers(bundleID: bundleID))
+                #expect(ProcessTapManager.shared.getRingBuffers(bundleID: bundleID) != nil)
                 ProcessTapManager.shared.stopTapping(bundleID: bundleID)
-                XCTAssertNil(ProcessTapManager.shared.getRingBuffers(bundleID: bundleID))
+                #expect(ProcessTapManager.shared.getRingBuffers(bundleID: bundleID) == nil)
             }
         }
         print("Completed real HAL tap iterations: \(tapCount)")
