@@ -49,7 +49,7 @@ struct StressTests {
             #expect(getActivePIDs(from: manager)[bundleID] != nil)
             
             // App termination simulation
-            let mockApp = MockRunningApplication(bundleIdentifier: bundleID)
+            let mockApp = MockRunningApplication(bundleIdentifier: bundleID, pid: pid)
             let notification = Notification(
                 name: NSWorkspace.didTerminateApplicationNotification,
                 object: nil,

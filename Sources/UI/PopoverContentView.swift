@@ -17,7 +17,7 @@ public struct PopoverContentView: View {
     // list listener only fires when processes are added/removed — not when an already
     // running app STARTS or STOPS producing output (its isRunningOutput flag flips but
     // the object list is unchanged). Polling keeps the list live for play/pause events.
-    private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    private static let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init() {}
 
@@ -166,7 +166,7 @@ public struct PopoverContentView: View {
             .frame(width: 260)
             .background(DS.surface)
         }
-        .onReceive(refreshTimer) { _ in
+        .onReceive(Self.refreshTimer) { _ in
             enumerator.refresh()
         }
         .onAppear {

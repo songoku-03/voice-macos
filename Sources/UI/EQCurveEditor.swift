@@ -13,13 +13,15 @@ public struct EQCurveEditor: View {
     @State private var activeDragIndex: Int? = nil
     @State private var spectrumLevels: [Float] = Array(repeating: 0.0, count: 10)
 
+    @State private var isObserved: Bool = false
+
     private let minFreq: Float = 20.0
     private let maxFreq: Float = 20000.0
     private let minGain: Float = -24.0
     private let maxGain: Float = 24.0
 
     // ~30fps refresh for the spectrum bars.
-    private let spectrumTimer = Timer.publish(every: 0.033, on: .main, in: .common).autoconnect()
+    private static let spectrumTimer = Timer.publish(every: 0.033, on: .main, in: .common).autoconnect()
 
     public init(eqController: EQController, spectrum: SpectrumTap? = nil) {
         self.eqController = eqController
@@ -187,9 +189,17 @@ public struct EQCurveEditor: View {
         .padding(.horizontal, DS.xs)
         .onAppear {
             readBands()
+            spectrum?.addObserver()
+            isObserved = true
         }
-        .onReceive(spectrumTimer) { _ in
-            guard let spectrum = spectrum else { return }
+        .onDisappear {
+            if isObserved {
+                isObserved = false
+                spectrum?.removeObserver()
+            }
+        }
+        .onReceive(Self.spectrumTimer) { _ in
+            guard isObserved, let spectrum = spectrum else { return }
             spectrum.computeLevels()
             let latest = spectrum.levels()
             withAnimation(.easeOut(duration: 0.08)) {

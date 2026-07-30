@@ -49,9 +49,8 @@ struct EmpiricalAudioProcessTests {
             print("WeChat ('微信') won as representative.")
         }
         
-        // Let's assert that the bug is indeed present (meaning "Helper" is chosen) to verify our theory.
-        assert(result[0].name == "Helper", "Representative should have been Helper due to the uppercase check bug")
-        print("PASS: testNonLatinLocalizedNameBug (verified that the uppercase heuristic is biased against non-Latin names)")
+        assert(result[0].name == "微信", "Representative should be 微信 over Helper")
+        print("PASS: testNonLatinLocalizedNameBug (verified that non-helper 微信 wins over Helper)")
     }
     
     // Helper to build AudioProcess
@@ -88,8 +87,8 @@ struct EmpiricalAudioProcessTests {
             print("  Selected representative: ID=\(p.audioObjectID), name='\(p.name)', bundleID='\(p.bundleID)'")
         }
         
-        // Assert that they are unioned into a single group, which is a bug because com.foo and com.bar are different apps.
-        assert(result.count == 1, "Expected transitive union to group all 3 processes into 1")
+        // Assert that they are NOT unioned into a single group because com.foo and com.bar are different apps.
+        assert(result.count == 2, "Expected transitive union check to keep com.foo and com.bar as separate groups")
         print("PASS: testTransitiveGroupingConflict (verified that transitive grouping merges different apps)")
     }
     
@@ -113,13 +112,9 @@ struct EmpiricalAudioProcessTests {
             print("  Selected representative: ID=\(p.audioObjectID), name='\(p.name)', bundleID='\(p.bundleID)'")
         }
         
-        // If they transitive-group, they will collapse into 1 row!
-        // Teams (com.microsoft.teams) <-> TeamsHelper (com.microsoft.teams) : same bundleID
-        // TeamsHelper (helper) <-> ChromeHelper (helper) : same name "helper"
-        // ChromeHelper (com.google.chrome) <-> Chrome (com.google.chrome) : same bundleID
-        // Therefore all 4 group together!
-        assert(result.count == 1, "Expected all 4 processes to merge into 1 due to helper name overlap")
-        print("PASS: testOverlappingGroupsWithHelpers (verified overlap bug where Teams and Chrome merge)")
+        // Since com.microsoft.teams and com.google.chrome are different apps, they do NOT group together!
+        assert(result.count == 2, "Expected 2 processes since com.microsoft.teams and com.google.chrome are different apps")
+        print("PASS: testOverlappingGroupsWithHelpers (verified overlap prevention where Teams and Chrome do not merge)")
     }
     
     // Test 3: Heuristic Total Order
@@ -201,7 +196,8 @@ struct EmpiricalAudioProcessTests {
         // Thus, the result should have:
         // - "NoBundle" (pEmptyBundle)
         // - Representative of {pEmptyName, pEmptyBoth} (which is pEmptyName, name="")
-        assert(resEmpty.count == 2, "Expected 2 representatives, got \(resEmpty.count)")
+        // Empty bundle IDs and empty names should not group with other empty elements.
+        assert(resEmpty.count == 3, "Expected 3 representatives for distinct empty-field processes, got \(resEmpty.count)")
         
         // Unicode and Case Sensitivity
         let pUpper = proc(4, "SPOTIFY", bundleID: "COM.SPOTIFY.CLIENT")

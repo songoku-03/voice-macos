@@ -17,6 +17,8 @@ private let processListChangedProc: AudioObjectPropertyListenerProc = { inObject
 public class AudioProcessEnumerator: @unchecked Sendable {
     public var processes: [AudioProcess] = []
     
+    private var iconCache: [String: NSImage] = [:]
+    
     @ObservationIgnored nonisolated(unsafe) private var isListening = false
     @ObservationIgnored nonisolated(unsafe) private var listenerPointer: UnsafeMutableRawPointer? = nil
     
@@ -50,6 +52,34 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             )
             AudioObjectRemovePropertyListener(systemId, &address, processListChangedProc, ptr)
         }
+    }
+
+    private func getCachedIcon(for bundleID: String, from app: NSRunningApplication) -> NSImage? {
+        guard !bundleID.isEmpty else { return app.icon }
+        if let cached = iconCache[bundleID] {
+            return cached
+        }
+        if let icon = app.icon {
+            iconCache[bundleID] = icon
+            return icon
+        }
+        return nil
+    }
+
+    private func processesHaveChanged(newProcesses: [AudioProcess]) -> Bool {
+        guard newProcesses.count == self.processes.count else { return true }
+        for (newProc, oldProc) in zip(newProcesses, self.processes) {
+            if newProc.audioObjectID != oldProc.audioObjectID ||
+               newProc.pid != oldProc.pid ||
+               newProc.bundleID != oldProc.bundleID ||
+               newProc.name != oldProc.name ||
+               newProc.isRunningOutput != oldProc.isRunningOutput ||
+               newProc.isRegularApp != oldProc.isRegularApp ||
+               newProc.icon !== oldProc.icon {
+                return true
+            }
+        }
+        return false
     }
     
     public func refresh() {
@@ -130,7 +160,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             if let runningApp = NSRunningApplication(processIdentifier: pid),
                runningApp.activationPolicy == .regular {
                 name = runningApp.localizedName ?? ""
-                icon = runningApp.icon
+                icon = getCachedIcon(for: bundleID, from: runningApp)
                 isRegularApp = true
             } else if let owner = resolveOwningApp(pid: pid, bundleID: bundleID) {
                 name = owner.name
@@ -207,7 +237,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                         pid: existing.pid,
                         bundleID: existing.bundleID,
                         name: existing.name,
-                        icon: app.icon,
+                        icon: getCachedIcon(for: bundleID, from: app),
                         isRunningOutput: existing.isRunningOutput,
                         isRegularApp: true
                     )
@@ -219,7 +249,7 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                     pid: app.processIdentifier,
                     bundleID: bundleID,
                     name: app.localizedName ?? bundleID,
-                    icon: app.icon,
+                    icon: getCachedIcon(for: bundleID, from: app),
                     isRunningOutput: false,
                     isRegularApp: true
                 )
@@ -227,7 +257,15 @@ public class AudioProcessEnumerator: @unchecked Sendable {
             }
         }
  
-        self.processes = Array(coreAudioProcesses.values)
+        let newProcesses = Array(coreAudioProcesses.values).sorted {
+            if $0.bundleID != $1.bundleID { return $0.bundleID < $1.bundleID }
+            if $0.name != $1.name { return $0.name < $1.name }
+            return $0.pid < $1.pid
+        }
+
+        if processesHaveChanged(newProcesses: newProcesses) {
+            self.processes = newProcesses
+        }
     }
     
     // Walk up the parent-PID chain (max 5 hops) to find the first ancestor that is a
@@ -240,7 +278,9 @@ public class AudioProcessEnumerator: @unchecked Sendable {
         while depth < 5 {
             if let app = NSRunningApplication(processIdentifier: current),
                app.activationPolicy == .regular {
-                return (app.localizedName ?? "", app.icon)
+                let bId = app.bundleIdentifier ?? bundleID
+                let icon = getCachedIcon(for: bId, from: app)
+                return (app.localizedName ?? "", icon)
             }
             guard let parent = parentPID(of: current), parent > 1, parent != current else { break }
             current = parent
@@ -255,7 +295,9 @@ public class AudioProcessEnumerator: @unchecked Sendable {
                 let prefix = parts.prefix(length).joined(separator: ".")
                 if let app = NSRunningApplication.runningApplications(withBundleIdentifier: prefix)
                     .first(where: { $0.activationPolicy == .regular }) {
-                    return (app.localizedName ?? "", app.icon)
+                    let bId = app.bundleIdentifier ?? prefix
+                    let icon = getCachedIcon(for: bId, from: app)
+                    return (app.localizedName ?? "", icon)
                 }
             }
         }

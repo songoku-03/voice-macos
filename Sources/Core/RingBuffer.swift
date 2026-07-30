@@ -60,7 +60,7 @@ public final class RingBuffer: @unchecked Sendable {
                 return 0 // Buffer full / not enough space
             }
             
-            let firstPart = min(byteCount, capacity - wInt)
+            let firstPart = byteCount < (capacity - wInt) ? byteCount : (capacity - wInt)
             rawBuffer.advanced(by: wInt).copyMemory(from: data, byteCount: firstPart)
             
             if firstPart < byteCount {
@@ -100,7 +100,7 @@ public final class RingBuffer: @unchecked Sendable {
             }
             
             // Now write the data
-            let firstPart = min(byteCount, capacity - wInt)
+            let firstPart = byteCount < (capacity - wInt) ? byteCount : (capacity - wInt)
             rawBuffer.advanced(by: wInt).copyMemory(from: data, byteCount: firstPart)
             
             if firstPart < byteCount {
@@ -131,7 +131,7 @@ public final class RingBuffer: @unchecked Sendable {
                 return 0 // Not enough data
             }
             
-            let firstPart = min(byteCount, capacity - rInt)
+            let firstPart = byteCount < (capacity - rInt) ? byteCount : (capacity - rInt)
             dest.copyMemory(from: rawBuffer.advanced(by: rInt), byteCount: firstPart)
             
             if firstPart < byteCount {

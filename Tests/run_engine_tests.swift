@@ -188,9 +188,8 @@ class AppAudioNode {
 
         let sampleRateMatch = abs(srcFormat.mSampleRate - dstFormat.mSampleRate) < 0.01
         let channelMatch = srcFormat.mChannelsPerFrame == dstFormat.mChannelsPerFrame
-        let formatFlagsMatch = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == (dstFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved)
         
-        let needsConverter = !sampleRateMatch || !channelMatch || !formatFlagsMatch
+        let needsConverter = !sampleRateMatch || !channelMatch
         
         if needsConverter {
             var tempConverter: AudioConverterRef? = nil
@@ -213,6 +212,9 @@ class AppAudioNode {
         let bytesPerFrame = Int(dstFormat.mBytesPerFrame)
         let localSpectrum = self.spectrumTap
         let localVolumeContainer = self.volumeContainer
+        let srcInterleaved = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0
+        let dstInterleaved = (dstFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0
+        let channelCount = Int(srcFormat.mChannelsPerFrame)
 
         self.sourceNode = AVAudioSourceNode(format: engineFormat) { isSilence, timestamp, frameCount, ioData in
             if let conv = localConverter, let ctx = localContext {
@@ -243,24 +245,54 @@ class AppAudioNode {
                 }
             } else {
                 let buffers = UnsafeMutableAudioBufferListPointer(ioData)
-                let bytesToRead = Int(frameCount) * bytesPerFrame
-                var minAvailable = Int.max
-                for rb in localBuffers {
-                    minAvailable = min(minAvailable, rb.bytesAvailableForRead)
-                }
-                let actualBytesToRead = min(bytesToRead, minAvailable)
-                let actualFrames = actualBytesToRead / bytesPerFrame
-                for (i, buffer) in buffers.enumerated() {
-                    if i < localBuffers.count {
-                        if let mData = buffer.mData {
-                            if actualFrames > 0 {
-                                let bytesRead = localBuffers[i].read(mData, byteCount: actualFrames * bytesPerFrame)
-                                if bytesRead < bytesToRead {
-                                    let offset = bytesRead
-                                    memset(mData.advanced(by: offset), 0, bytesToRead - offset)
+                let numberBuffers = buffers.count
+                if srcInterleaved && !dstInterleaved {
+                    let rb = localBuffers[0]
+                    let availBytes = rb.bytesAvailableForRead
+                    let srcBytesPerFrame = channelCount * MemoryLayout<Float>.size
+                    let availFrames = availBytes / srcBytesPerFrame
+                    let actualFrames = min(Int(frameCount), availFrames)
+                    
+                    var tempBuf = [Float](repeating: 0, count: max(1, actualFrames * channelCount))
+                    if actualFrames > 0 {
+                        tempBuf.withUnsafeMutableBufferPointer { bp in
+                            rb.read(bp.baseAddress!, byteCount: actualFrames * srcBytesPerFrame)
+                        }
+                    }
+                    
+                    let validFrames = min(actualFrames, Int(frameCount))
+                    for c in 0..<channelCount {
+                        if c < numberBuffers, let dstPtr = buffers[c].mData?.assumingMemoryBound(to: Float.self) {
+                            if validFrames > 0 {
+                                for f in 0..<validFrames {
+                                    dstPtr[f] = tempBuf[f * channelCount + c]
                                 }
-                            } else {
-                                memset(mData, 0, bytesToRead)
+                            }
+                            if validFrames < Int(frameCount) {
+                                memset(dstPtr.advanced(by: validFrames), 0, (Int(frameCount) - validFrames) * MemoryLayout<Float>.size)
+                            }
+                        }
+                    }
+                } else {
+                    let bytesToRead = Int(frameCount) * bytesPerFrame
+                    var minAvailable = Int.max
+                    for rb in localBuffers {
+                        minAvailable = min(minAvailable, rb.bytesAvailableForRead)
+                    }
+                    let actualBytesToRead = min(bytesToRead, minAvailable)
+                    let actualFrames = actualBytesToRead / bytesPerFrame
+                    for (i, buffer) in buffers.enumerated() {
+                        if i < localBuffers.count {
+                            if let mData = buffer.mData {
+                                if actualFrames > 0 {
+                                    let bytesRead = localBuffers[i].read(mData, byteCount: actualFrames * bytesPerFrame)
+                                    if bytesRead < bytesToRead {
+                                        let offset = bytesRead
+                                        memset(mData.advanced(by: offset), 0, bytesToRead - offset)
+                                    }
+                                } else {
+                                    memset(mData, 0, bytesToRead)
+                                }
                             }
                         }
                     }

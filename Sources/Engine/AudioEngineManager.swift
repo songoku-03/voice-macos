@@ -248,7 +248,12 @@ public class AudioEngineManager: @unchecked Sendable {
         
         // Load desiredTappedBundleIDs and auto-resume tapping for running matches
         let savedIDs = UserDefaults.standard.stringArray(forKey: "desiredTappedBundleIDs") ?? []
-        self.desiredTappedBundleIDs = Set(savedIDs)
+        let validIDs = savedIDs.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let cleanedSet = Set(validIDs)
+        if validIDs.count != savedIDs.count {
+            UserDefaults.standard.set(Array(cleanedSet), forKey: "desiredTappedBundleIDs")
+        }
+        self.desiredTappedBundleIDs = cleanedSet
         for app in NSWorkspace.shared.runningApplications {
             if let bundleID = app.bundleIdentifier, self.desiredTappedBundleIDs.contains(bundleID) {
                 let pid = app.processIdentifier
@@ -268,6 +273,7 @@ public class AudioEngineManager: @unchecked Sendable {
     }
     
     public func startAppTapping(bundleID: String, pid: pid_t) {
+        guard !bundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard activeNodes[bundleID] == nil else { return }
         desiredTappedBundleIDs.insert(bundleID)
         UserDefaults.standard.set(Array(desiredTappedBundleIDs), forKey: "desiredTappedBundleIDs")

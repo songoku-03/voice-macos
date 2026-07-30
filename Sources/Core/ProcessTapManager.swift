@@ -348,29 +348,30 @@ public class ProcessTapManager: @unchecked Sendable {
     }
 }
 
+private let audioBufferListBuffersOffset = MemoryLayout<AudioBufferList>.offset(of: \AudioBufferList.mBuffers)!
+
 @available(macOS 14.2, *)
 private let tapIOProc: AudioDeviceIOProc = { inDevice, _, inInputData, _, _, _, inClientData in
     guard let clientData = inClientData else { return noErr }
-    _ = Unmanaged<TapIOContext>.fromOpaque(clientData)._withUnsafeGuaranteedRef { context in
-        let ringBuffersPtr = context.buffersPtr
-        let ringBuffersCount = context.bufferCount
+    let context = Unmanaged<TapIOContext>.fromOpaque(clientData).takeUnretainedValue()
+    let ringBuffersPtr = context.buffersPtr
+    let ringBuffersCount = context.bufferCount
 
-        let numberBuffers = inInputData.pointee.mNumberBuffers
-        let mBuffersOffset = MemoryLayout<AudioBufferList>.offset(of: \AudioBufferList.mBuffers)!
-        let firstBufferPtr = UnsafeRawPointer(inInputData)
-            .advanced(by: mBuffersOffset)
-            .assumingMemoryBound(to: AudioBuffer.self)
+    let numberBuffers = Int(inInputData.pointee.mNumberBuffers)
+    let firstBufferPtr = UnsafeRawPointer(inInputData)
+        .advanced(by: audioBufferListBuffersOffset)
+        .assumingMemoryBound(to: AudioBuffer.self)
 
-        let buffers = UnsafeBufferPointer(start: firstBufferPtr, count: Int(numberBuffers))
-        for i in 0..<Int(numberBuffers) {
-            if i < ringBuffersCount, let mData = buffers[i].mData, buffers[i].mDataByteSize > 0 {
-                _ = Unmanaged<RingBuffer>.fromOpaque(ringBuffersPtr[i])._withUnsafeGuaranteedRef { rb -> Bool in
-                    rb.writeOverwriting(mData, byteCount: Int(buffers[i].mDataByteSize))
-                    return true
-                }
-            }
+    let count = numberBuffers < ringBuffersCount ? numberBuffers : ringBuffersCount
+    var i = 0
+    while i < count {
+        let bufPtr = firstBufferPtr + i
+        let byteSize = Int(bufPtr.pointee.mDataByteSize)
+        if byteSize > 0, let mData = bufPtr.pointee.mData {
+            let rb = Unmanaged<RingBuffer>.fromOpaque(ringBuffersPtr[i]).takeUnretainedValue()
+            rb.writeOverwriting(mData, byteCount: byteSize)
         }
-        return true
+        i += 1
     }
 
     return noErr

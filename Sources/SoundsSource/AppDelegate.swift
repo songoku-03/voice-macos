@@ -6,7 +6,7 @@ import Core
 
 @available(macOS 14.2, *)
 @MainActor
-public class AppDelegate: NSObject, NSApplicationDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
 
@@ -25,11 +25,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         
         print("\n--- APP LAUNCHED (App Bundle) ---")
         
-        // Create Popover
+        // Create Popover lazily — contentViewController is created on first show and cleared on close
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 360, height: 520)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverContentView())
+        popover.delegate = self
         self.popover = popover
         
         // Create Status Item in Menu Bar
@@ -78,10 +78,17 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            if popover.contentViewController == nil {
+                popover.contentViewController = NSHostingController(rootView: PopoverContentView())
+            }
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    public func popoverDidClose(_ notification: Notification) {
+        popover?.contentViewController = nil
     }
 
     // 7.2: Graceful teardown — ensures tap removed, overlay hidden, audio restored

@@ -5,7 +5,7 @@ import AppKit
 @testable import Engine
 @testable import Core
 
-@Suite @MainActor
+@Suite(.serialized) @MainActor
 struct AudioEngineIntegrationTests {
     
     private func createTestManager() -> AudioEngineManager {
@@ -338,7 +338,7 @@ struct AudioEngineIntegrationTests {
         // Put BreakTimerManager into breaking phase
         btm.stop()
         btm.studyDuration = 0.001
-        btm.breakDuration = 5.0
+        btm.breakDuration = 60.0
         
         btm.start()
         
@@ -357,11 +357,12 @@ struct AudioEngineIntegrationTests {
         #expect(btm.phase == .breaking, "Should be in breaking phase")
         
         // Now tap a new app Safari (which should succeed/simulate tapping)
-        manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
+        manager.startAppTapping(bundleID: "com.apple.Safari", pid: ProcessInfo.processInfo.processIdentifier)
         
         // Verify if the volume is ducked.
-        let volume = manager.getVolume(bundleID: "com.apple.Safari")
-        #expect(abs(volume - 0.1) < 0.001, "Newly tapped app volume should be ducked during break")
+        let volume = manager.activeNodes["com.apple.Safari"]?.volume ?? 0
+        let expectedDucked = manager.getVolume(bundleID: "com.apple.Safari") * 0.1
+        #expect(abs(volume - expectedDucked) < 0.001, "Newly tapped app volume should be ducked during break")
     }
 
     @Test func repeatedTappingDuringBreakRetainsOriginalPreBreakVolume() async throws {
@@ -403,12 +404,12 @@ struct AudioEngineIntegrationTests {
         
         btm.audioEngineManager = manager
         
-        manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
+        manager.startAppTapping(bundleID: "com.apple.Safari", pid: ProcessInfo.processInfo.processIdentifier)
         manager.setVolume(bundleID: "com.apple.Safari", volume: 0.8)
         
         btm.stop()
         btm.studyDuration = 0.001
-        btm.breakDuration = 5.0
+        btm.breakDuration = 60.0
         btm.start()
         
         let startTime = Date()
@@ -421,10 +422,11 @@ struct AudioEngineIntegrationTests {
         }
         
         #expect(btm.phase == .breaking, "Should be in breaking phase")
-        #expect(abs(manager.getVolume(bundleID: "com.apple.Safari") - 0.08) < 0.001, "Volume should be ducked")
+        let duckedVolume = manager.activeNodes["com.apple.Safari"]?.volume ?? 0
+        #expect(abs(duckedVolume - 0.08) < 0.001, "Volume should be ducked")
         
         manager.stopAppTapping(bundleID: "com.apple.Safari")
-        manager.startAppTapping(bundleID: "com.apple.Safari", pid: 99999)
+        manager.startAppTapping(bundleID: "com.apple.Safari", pid: ProcessInfo.processInfo.processIdentifier)
         
         btm.stop()
         

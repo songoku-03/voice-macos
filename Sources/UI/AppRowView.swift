@@ -162,7 +162,7 @@ struct VUMeterView: View {
     let isActive: Bool
     @State private var levels: [CGFloat] = Array(repeating: 0.1, count: 6)
 
-    private let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
+    private static let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     private func color(_ idx: Int) -> Color {
         idx > 4 ? DS.danger : (idx > 3 ? DS.warning : DS.playing)
@@ -177,7 +177,7 @@ struct VUMeterView: View {
             }
         }
         .frame(width: 31, height: 12)
-        .onReceive(timer) { _ in
+        .onReceive(Self.timer) { _ in
             guard isActive else {
                 let defaultLevels = Array(repeating: CGFloat(0.1), count: 6)
                 if levels != defaultLevels {
@@ -187,7 +187,7 @@ struct VUMeterView: View {
                 }
                 return
             }
-            withAnimation(.spring(response: 0.1, dampingFraction: 0.5)) {
+            withAnimation(.linear(duration: 0.08)) {
                 levels = (0..<6).map { _ in CGFloat.random(in: 0.15...1.0) }
             }
         }

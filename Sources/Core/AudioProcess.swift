@@ -191,9 +191,12 @@ public struct AudioProcess: Identifiable, Hashable {
              }
         }
         
-        // 9. Prioritize processes with non-empty bundleID
+        // 9. Prioritize shorter bundle ID when bundle IDs are compatible (e.g. main app vs helper/plugin)
         let lhsHasBundleID = !lhs.bundleID.isEmpty
         let rhsHasBundleID = !rhs.bundleID.isEmpty
+        if lhsHasBundleID && rhsHasBundleID && areBundleIDsCompatible(lhs.bundleID, rhs.bundleID) && lhs.bundleID.caseInsensitiveCompare(rhs.bundleID) != .orderedSame {
+            return lhs.bundleID.count < rhs.bundleID.count
+        }
         if lhsHasBundleID != rhsHasBundleID {
             return lhsHasBundleID
         }
