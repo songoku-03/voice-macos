@@ -17,7 +17,7 @@ public struct OutputDevicePicker: View {
     public var body: some View {
         HStack(spacing: DS.xs) {
             Image(systemName: "hifispeaker.fill")
-                .foregroundStyle(DS.accent)
+                .foregroundStyle(DS.control)
                 .font(.system(size: 10, weight: .semibold))
 
             Picker("", selection: $selection) {
@@ -31,7 +31,6 @@ public struct OutputDevicePicker: View {
             .pickerStyle(.menu)
             .labelsHidden()
             .controlSize(.small)
-            .tint(DS.accent)
             .frame(minWidth: 104, maxWidth: 150)
             .help("Select output audio device")
         }

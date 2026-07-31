@@ -68,7 +68,7 @@ public struct AppRowView: View {
                 Button(action: toggleTap) {
                     ZStack {
                         Circle()
-                            .fill(isTapped ? DS.accent.opacity(0.16) : Color.clear)
+                            .fill(isTapped ? DS.controlDim : Color.clear)
                             .frame(width: 24, height: 24)
                         
                         if isToggling {
@@ -78,7 +78,7 @@ public struct AppRowView: View {
                         } else {
                             Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
                                 .font(.system(size: 19, weight: .bold))
-                                .foregroundStyle(isTapped ? DS.accent : DS.textTertiary)
+                                .foregroundStyle(isTapped ? DS.control : DS.textTertiary)
                         }
                     }
                 }
@@ -97,7 +97,7 @@ public struct AppRowView: View {
                         .foregroundStyle(isTapped ? DS.textSecondary : DS.textTertiary.opacity(0.4))
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .frame(width: 20, height: 20)
-                        .background(isExpanded ? DS.accentDim : Color.clear)
+                        .background(isExpanded ? DS.controlDim : Color.clear)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)

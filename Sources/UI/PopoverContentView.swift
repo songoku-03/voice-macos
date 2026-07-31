@@ -32,13 +32,24 @@ public struct PopoverContentView: View {
         )
     }
     
+    @Environment(\.colorScheme) private var colorScheme
+
     public var body: some View {
         VStack(spacing: 0) {
-            // Header — playful cartoon logo + device
+            // Header — sleek app icon logo + title + device
             HStack(spacing: DS.s) {
-                Image(systemName: "music.note.house.fill")
-                    .font(.system(size: 15, weight: .black))
-                    .foregroundStyle(DS.accentGradient)
+                if let iconPath = Bundle.main.path(forResource: "app_icon", ofType: "png"),
+                   let nsImage = NSImage(contentsOfFile: iconPath) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 22, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                } else {
+                    Image(systemName: "waveform.path.ecg.rectangle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(DS.accentGradient)
+                }
                 
                 Text("SoundsSource")
                     .font(DSFont.wordmark)
@@ -114,16 +125,14 @@ public struct PopoverContentView: View {
         }
         .frame(width: 360)
         .background(
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .overlay(DS.bg.opacity(0.95))
+            VisualEffectView(material: colorScheme == .dark ? .hudWindow : .popover, blendingMode: .behindWindow)
+                .overlay(DS.bg.opacity(colorScheme == .dark ? 0.95 : 0.85))
         )
         .clipShape(RoundedRectangle(cornerRadius: DS.radiusL))
         .overlay(
             RoundedRectangle(cornerRadius: DS.radiusL)
                 .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
         )
-        .tint(DS.accent)
-        .preferredColorScheme(.dark)
         .sheet(isPresented: $showSaveAlert) {
             VStack(alignment: .leading, spacing: DS.m) {
                 Text("Save Preset")
@@ -138,7 +147,6 @@ public struct PopoverContentView: View {
                 TextField("Preset name", text: $newPresetName)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.regular)
-                    .tint(DS.accent)
 
                 HStack(spacing: DS.s) {
                     Spacer()
@@ -158,7 +166,6 @@ public struct PopoverContentView: View {
                     }
                     .controlSize(.regular)
                     .buttonStyle(.borderedProminent)
-                    .tint(DS.accent)
                     .disabled(newPresetName.isEmpty)
                 }
             }
@@ -191,7 +198,11 @@ struct VisualEffectView: NSViewRepresentable {
         return view
     }
     
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = .active
+    }
 }
 
 // MARK: - Hover Effect Helper

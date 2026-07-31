@@ -9,7 +9,7 @@ import AppKit
 @available(macOS 14.2, *)
 public struct EyeRestTimerView: View {
 
-    @State private var manager = BreakTimerManager.shared
+    private var manager = BreakTimerManager.shared
 
     // Local string-backed storage for the text fields (so we can validate).
     @State private var studyMinutesText: String = ""
@@ -27,7 +27,7 @@ public struct EyeRestTimerView: View {
             HStack(spacing: DS.xs) {
                 Image(systemName: "eye.circle.fill")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(DS.accent)
+                    .foregroundStyle(DS.accentText)
                 Text("Nghỉ mắt")
                     .font(DSFont.label)
                     .foregroundStyle(DS.textPrimary)
@@ -35,7 +35,7 @@ public struct EyeRestTimerView: View {
                 if manager.completedSessionsToday > 0 {
                     Text("• 📖 \(manager.completedSessionsToday)")
                         .font(DSFont.caption)
-                        .foregroundStyle(DS.accent)
+                        .foregroundStyle(DS.accentText)
                         .fontWeight(.bold)
                 }
                 
@@ -75,14 +75,14 @@ public struct EyeRestTimerView: View {
                             .fontWeight(.bold)
                     }
                     .font(DSFont.caption)
-                    .foregroundStyle(DS.accent)
+                    .foregroundStyle(DS.accentText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, DS.s)
-                    .background(DS.accent.opacity(0.12))
+                    .background(DS.control.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
                     .overlay(
                         RoundedRectangle(cornerRadius: DS.radiusM)
-                            .strokeBorder(DS.accent.opacity(0.3), lineWidth: DS.borderWidth)
+                            .strokeBorder(DS.control.opacity(0.3), lineWidth: DS.borderWidth)
                     )
                 }
                 .buttonStyle(.plain)
@@ -90,25 +90,28 @@ public struct EyeRestTimerView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // 5.4: Accessibility degraded-mode notice
-            if manager.phase != .idle && !manager.hardLockAvailable {
+            // 5.4: Accessibility degraded-mode notice (shows whenever !hardLockAvailable, including at .idle)
+            if !manager.hardLockAvailable {
                 HStack(spacing: DS.xs) {
                     Image(systemName: "exclamationmark.shield.fill")
-                        .foregroundStyle(DS.accent)
+                        .foregroundStyle(DS.accentText)
                         .font(.system(size: 11))
-                    Text("Chế độ overlay-only (chưa cấp Accessibility)")
+                    Text(degradedModeNoticeText)
                         .font(DSFont.caption)
                         .foregroundStyle(DS.textSecondary)
                     Spacer()
                     Button("Cấp quyền") {
-                        showAccessibilityAlert = true
+                        let granted = manager.requestAccessibilityPermission()
+                        if !granted {
+                            showAccessibilityAlert = true
+                        }
                     }
                     .font(DSFont.caption)
                     .buttonStyle(.plain)
-                    .foregroundStyle(DS.accent)
+                    .foregroundStyle(DS.accentText)
                 }
                 .padding(DS.xs + 2)
-                .background(DS.accent.opacity(0.08))
+                .background(DS.control.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
             }
 
@@ -144,7 +147,7 @@ public struct EyeRestTimerView: View {
                     Button(action: addTodo) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(newTodoTitle.isEmpty ? DS.textTertiary : DS.accent)
+                            .foregroundStyle(newTodoTitle.isEmpty ? DS.textTertiary : DS.accentText)
                     }
                     .buttonStyle(.plain)
                     .disabled(newTodoTitle.isEmpty)
@@ -210,13 +213,39 @@ public struct EyeRestTimerView: View {
         .onAppear { loadFromManager() }
         .alert("Cấp quyền Accessibility", isPresented: $showAccessibilityAlert) {
             Button("Mở System Settings") {
-                NSWorkspace.shared.open(
-                    URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                )
+                if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             Button("Đóng", role: .cancel) {}
         } message: {
-            Text("Vào System Settings → Privacy & Security → Accessibility, rồi bật SoundsSource. Sau đó nhấn Stop và Start lại để áp dụng.")
+            Text(accessibilityAlertMessage)
+        }
+    }
+
+    private var degradedModeNoticeText: String {
+        if case .ineligibleLocation = manager.bundleDiagnostic {
+            return "Ứng dụng nằm ở vị trí không thể cấp Accessibility"
+        }
+        return "Chế độ overlay-only (chưa cấp Accessibility)"
+    }
+
+    private var accessibilityAlertMessage: String {
+        switch manager.bundleDiagnostic {
+        case .missing:
+            return "Không tìm thấy file ứng dụng trên đĩa. Vui lòng chạy ứng dụng từ thư mục đã cài đặt ~/Applications/SoundsSource.app."
+        case .ineligibleLocation(let reason):
+            switch reason {
+            case .protectedFolder(let folder):
+                return "Ứng dụng đang nằm trong thư mục được bảo vệ (\(folder)). Trình chọn ứng dụng của System Settings không thể duyệt thư mục này để thêm quyền. Vui lòng di chuyển hoặc cài đặt ứng dụng vào thư mục ~/Applications hoặc /Applications."
+            case .appTranslocation:
+                return "Ứng dụng đang chạy trong chế độ cách ly AppTranslocation. Vui lòng di chuyển ứng dụng vào ~/Applications và chạy lại."
+            }
+        case .staleExecutable:
+            return "Mã ứng dụng trên đĩa không khớp với tiến trình đang chạy. Vui lòng khởi động lại ứng dụng từ thư mục cài đặt ~/Applications/SoundsSource.app."
+        case .ok, .unknown:
+            let installedPath = (NSHomeDirectory() as NSString).appendingPathComponent("Applications/SoundsSource.app")
+            return "Vào System Settings → Privacy & Security → Accessibility, nhấn nút [+] và chọn ứng dụng tại đường dẫn:\n\(installedPath)"
         }
     }
 
@@ -226,16 +255,16 @@ public struct EyeRestTimerView: View {
     private var statusBadge: some View {
         HStack(spacing: 4) {
             Circle()
-                .fill(manager.phase == .breaking ? DS.danger : DS.accent)
+                .fill(manager.phase == .breaking ? DS.danger : DS.control)
                 .frame(width: 6, height: 6)
             Text(statusLabel)
                 .font(DSFont.caption)
-                .foregroundStyle(manager.phase == .breaking ? DS.danger : DS.accent)
+                .foregroundStyle(manager.phase == .breaking ? DS.danger : DS.accentText)
                 .monospacedDigit()
         }
         .padding(.horizontal, DS.s)
         .padding(.vertical, 3)
-        .background((manager.phase == .breaking ? DS.danger : DS.accent).opacity(0.12))
+        .background((manager.phase == .breaking ? DS.danger : DS.control).opacity(0.12))
         .clipShape(Capsule())
     }
 
@@ -274,10 +303,10 @@ public struct EyeRestTimerView: View {
                     .fontWeight(.bold)
             }
             .font(DSFont.control)
-            .foregroundStyle(isRunning ? DS.danger : DS.bg)
+            .foregroundStyle(isRunning ? DS.danger : DS.onAccent())
             .frame(maxWidth: .infinity)
             .padding(.vertical, DS.s + 2)
-            .background(isRunning ? DS.danger.opacity(0.15) : DS.accent)
+            .background(isRunning ? DS.danger.opacity(0.15) : DS.control)
             .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
             .overlay(
                 RoundedRectangle(cornerRadius: DS.radiusM)
@@ -332,6 +361,7 @@ public struct EyeRestTimerView: View {
     }
 
     private func loadFromManager() {
+        manager.refreshBundleDiagnostic()
         studyMinutesText = String(format: "%.0f", manager.studyDuration / 60)
         breakMinutesText = String(format: "%.0f", manager.breakDuration / 60)
     }

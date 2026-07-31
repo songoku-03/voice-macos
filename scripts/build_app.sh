@@ -37,6 +37,12 @@ fi
 
 cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp Info.plist "$APP_BUNDLE/Contents/Info.plist"
+if [ -f "AppIcon.icns" ]; then
+    cp AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+fi
+if [ -f "AppIcon.iconset/icon_128x128.png" ]; then
+    cp AppIcon.iconset/icon_128x128.png "$APP_BUNDLE/Contents/Resources/app_icon.png"
+fi
 
 # Sign bundle with entitlements. Prefer the stable self-signed identity so macOS
 # remembers the audio-capture permission across rebuilds (ad-hoc changes identity
@@ -50,4 +56,20 @@ else
     codesign --force --sign - --entitlements entitlements.plist "$APP_BUNDLE"
 fi
 
-echo "=== Build Complete: $APP_BUNDLE ==="
+# Install to ~/Applications so System Settings Accessibility picker can enumerate it
+INSTALL_DIR="$HOME/Applications"
+INSTALL_BUNDLE="${INSTALL_DIR}/${APP_NAME}.app"
+
+echo "=== Installing App Bundle to $INSTALL_BUNDLE ==="
+mkdir -p "$INSTALL_DIR"
+rm -rf "$INSTALL_BUNDLE"
+ditto "$APP_BUNDLE" "$INSTALL_BUNDLE"
+
+# Re-register with Launch Services so System Settings sees it immediately
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [ -x "$LSREGISTER" ]; then
+    "$LSREGISTER" -f "$INSTALL_BUNDLE"
+fi
+
+echo "=== Build & Install Complete ==="
+echo "Launch target: $INSTALL_BUNDLE"

@@ -113,7 +113,7 @@ public struct EQCurveEditor: View {
                             }
                             
                             Circle()
-                                .fill(isDragging ? DS.accentPink : DS.accent)
+                                .fill(isDragging ? DS.control.opacity(0.8) : DS.control)
                                 .frame(width: isDragging ? 14 : 11, height: isDragging ? 14 : 11)
                                 .overlay(
                                     Circle()

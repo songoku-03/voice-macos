@@ -129,6 +129,9 @@ public final class BreakTimerManager {
     /// Whether the event-tap hard-lock is available (Accessibility permission granted).
     public private(set) var hardLockAvailable = false
 
+    /// Bundle integrity diagnostic status.
+    public private(set) var bundleDiagnostic: BundleDiagnostic = .unknown
+
     // MARK: Injected dependencies
 
     private var _customAudioEngineManager: AudioEngineManager?
@@ -196,6 +199,21 @@ public final class BreakTimerManager {
 
         setupWorkspaceObservers()
         crashSafeRestoreIfNeeded()
+        refreshBundleDiagnostic()
+    }
+
+    /// Refresh bundle integrity diagnostic and permission check.
+    public func refreshBundleDiagnostic() {
+        bundleDiagnostic = BundleIntegrityChecker.diagnose()
+        hardLockAvailable = checkAccessibilityPermission()
+    }
+
+    /// Explicitly request Accessibility permission (retryable from UI).
+    @discardableResult
+    public func requestAccessibilityPermission() -> Bool {
+        let granted = promptAccessibilityPermission()
+        hardLockAvailable = granted
+        return granted
     }
 
     // MARK: - Public API

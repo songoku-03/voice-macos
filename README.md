@@ -38,6 +38,18 @@ Vì ứng dụng được ký ad-hoc (chưa đăng ký tài khoản Apple Develo
 
 > **Lưu ý**: Lần đầu khởi chạy, hãy chọn **Allow** khi macOS xin quyền ghi âm (System Audio Capture / Microphone) để ứng dụng có thể bắt luồng âm thanh.
 
+### Cấp quyền Accessibility (Quyền hỗ trợ tiếp cận cho chế độ Khóa màn hình nghỉ mắt)
+
+Nếu bạn sử dụng tính năng **Nghỉ mắt / Eye-rest timer**, ứng dụng cần quyền Accessibility để triển khai chế độ khóa bàn phím trong thời gian nghỉ.
+
+- **Vị trí cài đặt bắt buộc**: File ứng dụng phải được đặt tại `~/Applications/SoundsSource.app` (phát triển) hoặc `/Applications/SoundsSource.app` (chính thức). **Không chạy ứng dụng từ thư mục `~/Documents`, `~/Desktop` hay `~/Downloads`** vì macOS TCC bảo vệ các thư mục này, khiến trình chọn ứng dụng của System Settings không thể tìm thấy file để cấp quyền.
+- **Quyền theo định danh (Identity-based TCC grant)**: Quyền Accessibility được cấp theo **Bundle Identifier (`com.soundssource.app`) và Chứng thư ký (Designated Requirement)**. Việc di chuyển ứng dụng giữa `~/Applications` và `/Applications` không làm mất quyền đã cấp.
+- **Đường dẫn cấp thủ công**: Mở **System Settings → Privacy & Security → Accessibility**, nhấn nút **`+`** và chọn file ứng dụng tại `~/Applications/SoundsSource.app` (hoặc `/Applications/SoundsSource.app`).
+- **Lệnh khôi phục TCC**: Nếu cần reset lại trạng thái cấp quyền Accessibility cho ứng dụng, chạy lệnh Terminal:
+  ```bash
+  sudo tccutil reset Accessibility com.soundssource.app
+  ```
+
 ---
 
 ## 💻 Hướng dẫn sử dụng

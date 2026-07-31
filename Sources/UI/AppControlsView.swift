@@ -94,11 +94,11 @@ public struct AppControlsView: View {
                                 if isEQBypassed {
                                     DS.cardBgActive
                                 } else {
-                                    DS.accentGradient
+                                    DS.control
                                 }
                              }
                         )
-                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.stroke)
+                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.onAccent())
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
@@ -167,7 +167,7 @@ struct CustomSlider: View {
                 
                 // Thumb
                 Circle()
-                    .fill(DS.accent)
+                    .fill(DS.control)
                     .frame(width: thumbSize, height: thumbSize)
                     .overlay(
                         Circle()

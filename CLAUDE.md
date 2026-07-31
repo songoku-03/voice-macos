@@ -11,12 +11,12 @@ SoundsSource is a macOS menu-bar app for per-application audio control: capture 
 swift build                      # debug
 swift build -c release
 
-# Assemble + ad-hoc-sign the .app bundle (required to actually run — see below)
-./scripts/build_app.sh           # release → build/SoundsSource.app
-./scripts/build_app.sh --debug   # debug build
+# Assemble + ad-hoc-sign the .app bundle and install to ~/Applications (required to actually run and grant TCC)
+./scripts/build_app.sh           # release → installs to ~/Applications/SoundsSource.app
+./scripts/build_app.sh --debug   # debug build → installs to ~/Applications/SoundsSource.app
 ./scripts/build_dmg.sh           # package build/SoundsSource.dmg
 
-open build/SoundsSource.app      # launch
+open ~/Applications/SoundsSource.app      # launch installed app
 
 # Tests (XCTest suite in the EngineTests target)
 ./scripts/test.sh                                   # full suite
@@ -26,7 +26,12 @@ open build/SoundsSource.app      # launch
 
 **Always run tests via `./scripts/test.sh`, not `swift test` directly.** Under Command Line Tools (no full Xcode), SwiftPM doesn't add the Swift Testing framework's search/runtime paths; the script passes them explicitly. With a full Xcode install the flags are harmless.
 
-**You cannot just `swift run` this app.** Audio capture requires running **unsandboxed** with the `com.apple.security.system-audio-capture` entitlement (see `entitlements.plist`), which only takes effect on a code-signed bundle. `build_app.sh` copies the binary + `Info.plist` into the bundle and applies an ad-hoc signature (`codesign --sign -`). The first launch also prompts for the microphone/recording permission, which must be granted or no audio flows.
+**You cannot just `swift run` this app.** Audio capture requires running **unsandboxed** with the `com.apple.security.system-audio-capture` entitlement (see `entitlements.plist`), which only takes effect on a code-signed bundle. `build_app.sh` copies the binary + `Info.plist` into the bundle, applies a signature, and installs it to `~/Applications/SoundsSource.app` (registering it via `lsregister -f`).
+
+**Accessibility Permission & TCC Install Location:**
+- **Required Target**: The app MUST be installed under `~/Applications` (dev) or `/Applications` (release). Bundles under `~/Documents` (or `build/`), `~/Desktop`, or `~/Downloads` cannot be granted Accessibility permission because System Settings' picker cannot enumerate TCC-protected folders.
+- **DR Keying**: TCC keys Accessibility grants by Bundle Identifier (`com.soundssource.app`) plus Designated Requirement (certificate leaf). Moving between `~/Applications` and `/Applications` preserves the grant.
+- **TCC Reset**: To reset Accessibility TCC state for debugging: `sudo tccutil reset Accessibility com.soundssource.app`.
 
 ## Architecture
 
@@ -66,6 +71,7 @@ All per-app state in `AudioEngineManager` (volume, mute, routing, EQ) is **keyed
 - **Hard-coded Core Audio four-char-code selectors.** Many `AudioObjectPropertySelector`s are written as raw hex (e.g. `0x70727323` = `'prs#'`, `'pbid'`, `'tuid'`, `'tfmt'`, `'id2p'`) with the FourCC in a comment, because the named SDK constants don't reliably resolve under the Swift 6 / Command Line Tools toolchain. Follow that pattern rather than assuming a constant exists.
 - **Teardown order is load-bearing.** In `ProcessTapManager.stopTapping`, the aggregate device must be stopped/destroyed *before* the tap (`AudioHardwareDestroyProcessTap`) — the aggregate holds a reference to the tap. Reordering causes a dangling HAL reference.
 - **Concurrency model:** real-time callbacks and Core Audio bridges use `@unchecked Sendable` and `nonisolated(unsafe)` deliberately. Code on the IOProc / render thread must not allocate, lock, or call back into `@MainActor` state.
+- **Theming & System Appearance:** `DS` tokens (`DesignSystem.swift`) resolve dynamically at draw time for Light (warm cream) and Dark (indigo) appearances. Tokens follow a role-based taxonomy: **Control** tokens follow the user's System Settings accent (`Color.accentColor`); **Brand** (yellow/magenta/mint) and **Semantic** tokens (Quit red, playing dot mint) do not. **VU Meter** (green→amber→red) and **Break Overlay** (`BreakOverlayWindow`, dark 0.85 black) are locked and exempt from appearance changes.
 - **Known wart:** `SoundsSource/AppDelegate.swift` redirects stdout/stderr to a **hard-coded absolute log path** (`/Users/mac/Documents/GitHub/voice-macos/app.log`). If you touch `applicationDidFinishLaunching`, this is worth fixing/parameterizing rather than copying.
 
 <!-- gitnexus:start -->
