@@ -570,6 +570,12 @@ public class AudioEngineManager: @unchecked Sendable {
         return eqBypass[bundleID] ?? false
     }
 
+    public func persistEQForApp(bundleID: String) {
+        if let appNode = activeNodes[bundleID] {
+            snapshotEQSettings(bundleID: bundleID, from: appNode)
+        }
+    }
+
     private func snapshotEQSettings(bundleID: String, from appNode: AppAudioNode) {
         let data = appNode.eqController.getPresetData(volume: getVolume(bundleID: bundleID))
         cachedAppSettings[bundleID] = data

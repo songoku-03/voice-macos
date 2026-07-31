@@ -60,6 +60,23 @@ public class EQController: @unchecked Sendable {
         }
         avAudioUnit.bypass = false
     }
+
+    /// Generates a smooth bell curve boosting around a target frequency (e.g. 40 Hz Gamma Focus, 432 Hz Healing).
+    public func applyTargetFrequency(hz: Float, maxBoost: Float = 12.0) {
+        let defaultFrequencies: [Float] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+        let clampedTarget = max(20.0, min(20000.0, hz))
+        let targetLog = log10(clampedTarget)
+
+        for (i, freq) in defaultFrequencies.enumerated() {
+            let bandLog = log10(freq)
+            let diff = abs(bandLog - targetLog)
+            // Gaussian bell curve in log frequency space
+            let gain = maxBoost * exp(-pow(diff / 0.38, 2.0))
+            let roundedGain = (gain * 10.0).rounded() / 10.0
+            setBand(index: i, frequency: freq, gain: roundedGain, bandwidth: 1.0, type: .parametric, bypass: false)
+        }
+        avAudioUnit.bypass = false
+    }
 }
 
 public struct EQBandData: Codable, Hashable, Sendable {

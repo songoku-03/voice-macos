@@ -80,12 +80,16 @@ struct BreakOverlayContentView: View {
                     BreakTimerManager.shared.skip()
                 } label: {
                     Text("Bỏ qua")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.black)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.85))
+                        .background(Color.white.opacity(0.12))
                         .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.0)
+                        )
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: []) // Allow Escape to skip (not suppressed by tap)

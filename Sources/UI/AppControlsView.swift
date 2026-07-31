@@ -62,16 +62,16 @@ public struct AppControlsView: View {
                 Button(action: toggleMute) {
                     ZStack {
                         Circle()
-                            .fill(isMuted ? DS.danger.opacity(0.12) : DS.cardBgActive)
+                            .fill(isMuted ? DS.danger.opacity(0.12) : DS.surfaceHi)
                             .frame(width: 24, height: 24)
                         
                         Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(isMuted ? DS.danger : DS.textSecondary)
                     }
                     .overlay(
                         Circle()
-                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                            .strokeBorder(isMuted ? DS.danger.opacity(0.3) : DS.stroke, lineWidth: DS.borderWidth)
                     )
                 }
                 .buttonStyle(.plain)
@@ -87,22 +87,22 @@ public struct AppControlsView: View {
                     Text(isEQBypassed ? "EQ OFF" : "EQ ON")
                         .font(DSFont.label)
                         .tracking(0.6)
-                        .padding(.horizontal, DS.s + 3)
+                        .padding(.horizontal, DS.s + 2)
                         .padding(.vertical, DS.xs)
                         .background(
                             Group {
                                 if isEQBypassed {
-                                    DS.cardBgActive
+                                    DS.surfaceHi
                                 } else {
-                                    DS.control
+                                    DS.control.opacity(0.15)
                                 }
                              }
                         )
-                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.onAccent())
+                        .foregroundStyle(isEQBypassed ? DS.textTertiary : DS.control)
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
-                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                                .strokeBorder(isEQBypassed ? DS.stroke : DS.control.opacity(0.4), lineWidth: DS.borderWidth)
                         )
                 }
                 .buttonStyle(.plain)
@@ -111,6 +111,7 @@ public struct AppControlsView: View {
             // EQ curve — stays visible when bypassed, but dimmed and inert so the
             // user keeps their curve in view while EQ is off.
             EQCurveEditor(
+                bundleID: bundleID,
                 eqController: eqController,
                 spectrum: AudioEngineManager.shared.activeNodes[bundleID]?.spectrumTap
             )
@@ -130,7 +131,7 @@ public struct AppControlsView: View {
     }
 }
 
-// MARK: - Custom Slider for Playful Cartoon Audio Controls
+// MARK: - Custom Slider for Audio Controls
 struct CustomSlider: View {
     @Binding var value: Float
     var range: ClosedRange<Float> = 0.0...2.0
@@ -148,22 +149,17 @@ struct CustomSlider: View {
             ZStack(alignment: .leading) {
                 // Background track
                 Capsule()
-                    .fill(DS.stroke.opacity(0.3))
-                    .frame(height: 8)
+                    .fill(DS.surfaceHi)
+                    .frame(height: 6)
                     .overlay(
                         Capsule()
-                            .stroke(DS.stroke, lineWidth: DS.borderWidth)
+                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
                     )
                 
                 // Active track with gradient
                 Capsule()
                     .fill(DS.sliderGradient)
-                    .frame(width: max(0, filledWidth), height: 8)
-                    .overlay(
-                        Capsule()
-                            .stroke(DS.stroke, lineWidth: DS.borderWidth)
-                            .frame(width: max(0, filledWidth))
-                    )
+                    .frame(width: max(0, filledWidth), height: 6)
                 
                 // Thumb
                 Circle()
@@ -171,13 +167,10 @@ struct CustomSlider: View {
                     .frame(width: thumbSize, height: thumbSize)
                     .overlay(
                         Circle()
-                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                            .strokeBorder(Color.white.opacity(0.8), lineWidth: 1.0)
                     )
-                    .background(
-                        Circle()
-                            .fill(DS.shadowColor)
-                            .offset(x: 2, y: 2)
-                    )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                    .scaleEffect(isDragging ? 1.15 : (isHovered ? 1.08 : 1.0))
                     .offset(x: max(0, min(width - thumbSize, filledWidth - thumbSize/2)))
             }
             .frame(maxHeight: .infinity)

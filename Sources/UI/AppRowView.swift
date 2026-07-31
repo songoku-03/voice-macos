@@ -40,7 +40,7 @@ public struct AppRowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.radiusS)
-                        .strokeBorder(DS.stroke, lineWidth: 1.0)
+                        .strokeBorder(DS.stroke.opacity(0.6), lineWidth: 1.0)
                 )
 
                 // Name + live status
@@ -55,6 +55,7 @@ public struct AppRowView: View {
                             Circle()
                                 .fill(DS.playing)
                                 .frame(width: 6, height: 6)
+                                .shadow(color: DS.playing.opacity(0.4), radius: 3)
                         }
                     }
                 }
@@ -64,7 +65,7 @@ public struct AppRowView: View {
                 // VU meter — only animates when tapped AND producing audio
                 VUMeterView(isActive: isTapped && process.isRunningOutput)
 
-                // Capture toggle (playful bubble button)
+                // Capture toggle (sleek power button)
                 Button(action: toggleTap) {
                     ZStack {
                         Circle()
@@ -77,7 +78,7 @@ public struct AppRowView: View {
                                 .scaleEffect(0.6)
                         } else {
                             Image(systemName: isTapped ? "power.circle.fill" : "power.circle")
-                                .font(.system(size: 19, weight: .bold))
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(isTapped ? DS.control : DS.textTertiary)
                         }
                     }
@@ -93,7 +94,7 @@ public struct AppRowView: View {
                     } 
                 }) {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(isTapped ? DS.textSecondary : DS.textTertiary.opacity(0.4))
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .frame(width: 20, height: 20)
@@ -104,7 +105,7 @@ public struct AppRowView: View {
                 .disabled(!isTapped)
             }
             .padding(.horizontal, DS.m)
-            .padding(.vertical, DS.s + 3)
+            .padding(.vertical, DS.s + 2)
             
             // Expanded controls
             if isExpanded && isTapped {
@@ -125,8 +126,8 @@ public struct AppRowView: View {
                 .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
         )
         .cartoonShadow(radius: DS.radiusM)
-        .padding(.horizontal, DS.m)
-        .padding(.vertical, DS.s)
+        .padding(.horizontal, DS.s)
+        .padding(.vertical, DS.xs)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering

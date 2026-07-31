@@ -60,10 +60,10 @@ public struct PopoverContentView: View {
                 OutputDevicePicker(selection: Bindable(engineManager).selectedDeviceID)
             }
             .padding(.horizontal, DS.l)
-            .padding(.vertical, DS.m + 2)
-            .background(DS.surface)
+            .padding(.vertical, DS.m)
+            .background(DS.surface.opacity(0.8))
             
-            Rectangle().fill(DS.stroke).frame(height: DS.borderWidth)
+            Divider().background(DS.stroke)
 
             // Combined scrollable area: app list + eye-rest timer panel
             ScrollView {
@@ -81,15 +81,16 @@ public struct PopoverContentView: View {
             }
             .frame(maxHeight: 500)
 
+            Divider().background(DS.stroke)
+
             // Footer — Save Preset & Quit
             HStack {
                 Button(action: { showSaveAlert = true }) {
                     Label("Save Preset", systemImage: "plus.circle")
                         .font(DSFont.caption)
-                        .fontWeight(.bold)
-                        .foregroundStyle(DS.textSecondary)
+                        .foregroundStyle(DS.textPrimary)
                         .padding(.horizontal, DS.m)
-                        .padding(.vertical, DS.xs + 3)
+                        .padding(.vertical, DS.xs + 2)
                         .background(DS.surfaceHi)
                         .clipShape(Capsule())
                         .overlay(
@@ -105,28 +106,27 @@ public struct PopoverContentView: View {
                 Button(action: { NSApp.terminate(nil) }) {
                     Text("Quit")
                         .font(DSFont.caption)
-                        .fontWeight(.bold)
                         .foregroundStyle(DS.danger)
                         .padding(.horizontal, DS.m + 4)
-                        .padding(.vertical, DS.xs + 3)
+                        .padding(.vertical, DS.xs + 2)
                         .background(DS.danger.opacity(0.12))
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
-                                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                                .strokeBorder(DS.danger.opacity(0.25), lineWidth: DS.borderWidth)
                         )
                 }
                 .buttonStyle(.plain)
                 .hoverEffectHelper()
             }
             .padding(.horizontal, DS.l)
-            .padding(.vertical, DS.m)
-            .background(DS.surface)
+            .padding(.vertical, DS.s + 2)
+            .background(DS.surface.opacity(0.8))
         }
         .frame(width: 360)
         .background(
             VisualEffectView(material: colorScheme == .dark ? .hudWindow : .popover, blendingMode: .behindWindow)
-                .overlay(DS.bg.opacity(colorScheme == .dark ? 0.95 : 0.85))
+                .overlay(DS.bg.opacity(colorScheme == .dark ? 0.75 : 0.65))
         )
         .clipShape(RoundedRectangle(cornerRadius: DS.radiusL))
         .overlay(

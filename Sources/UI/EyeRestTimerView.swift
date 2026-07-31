@@ -204,7 +204,7 @@ public struct EyeRestTimerView: View {
             }
         }
         .padding(DS.m)
-        .background(DS.surfaceHi)
+        .background(DS.surface.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
         .overlay(
             RoundedRectangle(cornerRadius: DS.radiusM)
@@ -259,7 +259,7 @@ public struct EyeRestTimerView: View {
                 .frame(width: 6, height: 6)
             Text(statusLabel)
                 .font(DSFont.caption)
-                .foregroundStyle(manager.phase == .breaking ? DS.danger : DS.accentText)
+                .foregroundStyle(manager.phase == .breaking ? DS.danger : DS.control)
                 .monospacedDigit()
         }
         .padding(.horizontal, DS.s)
@@ -300,7 +300,7 @@ public struct EyeRestTimerView: View {
             HStack(spacing: DS.xs) {
                 Image(systemName: isRunning ? "stop.circle.fill" : "play.circle.fill")
                 Text(isRunning ? "Dừng" : "Bắt đầu")
-                    .fontWeight(.bold)
+                    .fontWeight(.semibold)
             }
             .font(DSFont.control)
             .foregroundStyle(isRunning ? DS.danger : DS.onAccent())
@@ -310,7 +310,7 @@ public struct EyeRestTimerView: View {
             .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
             .overlay(
                 RoundedRectangle(cornerRadius: DS.radiusM)
-                    .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                    .strokeBorder(isRunning ? DS.danger.opacity(0.3) : Color.white.opacity(0.2), lineWidth: DS.borderWidth)
             )
         }
         .buttonStyle(.plain)

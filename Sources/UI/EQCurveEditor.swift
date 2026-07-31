@@ -4,8 +4,11 @@ import Engine
 
 @available(macOS 14.2, *)
 public struct EQCurveEditor: View {
+    let bundleID: String?
     let eqController: EQController
     let spectrum: SpectrumTap?
+
+    private static let defaultFrequencies: [Float] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 
     // Binding to refresh state
     @State private var bandGains: [Float] = Array(repeating: 0.0, count: 10)
@@ -14,6 +17,7 @@ public struct EQCurveEditor: View {
     @State private var spectrumLevels: [Float] = Array(repeating: 0.0, count: 10)
 
     @State private var isObserved: Bool = false
+    @State private var customHzText: String = ""
 
     private let minFreq: Float = 20.0
     private let maxFreq: Float = 20000.0
@@ -23,7 +27,8 @@ public struct EQCurveEditor: View {
     // ~30fps refresh for the spectrum bars.
     private static let spectrumTimer = Timer.publish(every: 0.033, on: .main, in: .common).autoconnect()
 
-    public init(eqController: EQController, spectrum: SpectrumTap? = nil) {
+    public init(bundleID: String? = nil, eqController: EQController, spectrum: SpectrumTap? = nil) {
+        self.bundleID = bundleID
         self.eqController = eqController
         self.spectrum = spectrum
     }
@@ -52,13 +57,13 @@ public struct EQCurveEditor: View {
                     }
                     .stroke(DS.stroke.opacity(0.18), lineWidth: 1.0)
                     
-                    // 0dB Center line (thick cartoon style)
+                    // 0dB Center line
                     Path { path in
                         let y = yForGain(0.0, height: size.height)
                         path.move(to: CGPoint(x: 0, y: y))
                         path.addLine(to: CGPoint(x: size.width, y: y))
                     }
-                    .stroke(DS.stroke.opacity(0.35), lineWidth: DS.borderWidth)
+                    .stroke(DS.stroke.opacity(0.4), lineWidth: 1.0)
 
                     // 1b. Live spectrum bars (move with the music)
                     ForEach(0..<10, id: \.self) { idx in
@@ -69,7 +74,7 @@ public struct EQCurveEditor: View {
                         RoundedRectangle(cornerRadius: 2.0)
                             .fill(
                                 LinearGradient(
-                                    colors: [DS.accentPink.opacity(0.24), DS.accentPink.opacity(0.01)],
+                                    colors: [DS.accentPink.opacity(0.25), DS.accentPink.opacity(0.01)],
                                     startPoint: .bottom,
                                     endPoint: .top
                                 )
@@ -78,7 +83,7 @@ public struct EQCurveEditor: View {
                             .position(x: x, y: size.height - h / 2)
                     }
 
-                    // 2. Draw Response Curve (Thick cartoon curve)
+                    // 2. Draw Response Curve
                     Path { path in
                         let points = (0...Int(size.width)).map { screenX -> CGPoint in
                             let freq = freqForX(Float(screenX), width: size.width)
@@ -96,10 +101,10 @@ public struct EQCurveEditor: View {
                     }
                     .stroke(
                         DS.eqGradient,
-                        style: StrokeStyle(lineWidth: 4.0, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 3.0, lineCap: .round, lineJoin: .round)
                     )
 
-                    // 3. Draw Interactive Band Nodes (Yellow bubbles with dark outlines)
+                    // 3. Draw Interactive Band Nodes (Glowing control nodes)
                     ForEach(0..<10, id: \.self) { idx in
                         let x = xForFreq(bandFrequencies[idx], width: size.width)
                         let y = yForGain(bandGains[idx], height: size.height)
@@ -108,22 +113,18 @@ public struct EQCurveEditor: View {
                         ZStack {
                             if isDragging {
                                 Circle()
-                                    .fill(DS.accentPink.opacity(0.25))
-                                    .frame(width: 26, height: 26)
+                                    .fill(DS.accentPink.opacity(0.3))
+                                    .frame(width: 24, height: 24)
                             }
                             
                             Circle()
-                                .fill(isDragging ? DS.control.opacity(0.8) : DS.control)
-                                .frame(width: isDragging ? 14 : 11, height: isDragging ? 14 : 11)
+                                .fill(isDragging ? DS.control : DS.surface)
+                                .frame(width: isDragging ? 13 : 10, height: isDragging ? 13 : 10)
                                 .overlay(
                                     Circle()
-                                        .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                                        .strokeBorder(DS.control, lineWidth: 1.5)
                                 )
-                                .background(
-                                    Circle()
-                                        .fill(DS.shadowColor)
-                                        .offset(x: 1.5, y: 1.5)
-                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
                         }
                         .position(x: x, y: y)
                     }
@@ -134,6 +135,7 @@ public struct EQCurveEditor: View {
                     RoundedRectangle(cornerRadius: DS.radiusM)
                         .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
                 )
+                .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
@@ -142,13 +144,12 @@ public struct EQCurveEditor: View {
                             if let active = activeDragIndex {
                                 dragIdx = active
                             } else {
-                                // Find closest node within touch radius
+                                // Find node with closest X position
                                 var closestIdx = 0
-                                var minDistance: CGFloat = CGFloat.infinity
+                                var minDistance: CGFloat = .infinity
                                 for idx in 0..<10 {
                                     let x = xForFreq(bandFrequencies[idx], width: size.width)
-                                    let y = yForGain(bandGains[idx], height: size.height)
-                                    let dist = hypot(location.x - x, location.y - y)
+                                    let dist = abs(location.x - x)
                                     if dist < minDistance {
                                         minDistance = dist
                                         closestIdx = idx
@@ -160,16 +161,15 @@ public struct EQCurveEditor: View {
                                 }
                             }
                             
-                            // Update values
-                            let newFreq = freqForX(Float(location.x), width: size.width)
+                            // Update gain for the selected band
                             let newGain = gainForY(Float(location.y), height: size.height)
-                            
-                            updateBand(index: dragIdx, freq: newFreq, gain: newGain)
+                            updateBand(index: dragIdx, gain: newGain)
                         }
                         .onEnded { _ in
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                 activeDragIndex = nil
                             }
+                            persistState()
                         }
                 )
             }
@@ -185,6 +185,77 @@ public struct EQCurveEditor: View {
             }
             .font(DSFont.mono)
             .foregroundStyle(DS.textTertiary)
+
+            // Quick Hz Target Presets
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DS.xs) {
+                    presetChip("Flat") {
+                        eqController.setFlat()
+                        readBands()
+                        persistState()
+                    }
+                    presetChip("🎯 40 Hz") {
+                        eqController.applyTargetFrequency(hz: 40)
+                        readBands()
+                        persistState()
+                    }
+                    presetChip("🌙 432 Hz") {
+                        eqController.applyTargetFrequency(hz: 432)
+                        readBands()
+                        persistState()
+                    }
+                    presetChip("🔊 Bass") {
+                        eqController.applyTargetFrequency(hz: 80, maxBoost: 10)
+                        readBands()
+                        persistState()
+                    }
+                    presetChip("🎙️ Vocal") {
+                        eqController.applyTargetFrequency(hz: 1500, maxBoost: 8)
+                        readBands()
+                        persistState()
+                    }
+                }
+            }
+
+            // Custom Hz Input
+            HStack(spacing: DS.xs) {
+                Text("Mốc Hz:")
+                    .font(DSFont.caption)
+                    .foregroundStyle(DS.textSecondary)
+
+                TextField("Ví dụ 432", text: $customHzText)
+                    .textFieldStyle(.plain)
+                    .font(DSFont.mono)
+                    .foregroundStyle(DS.textPrimary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DS.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.radiusS)
+                            .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                    )
+                    .frame(width: 75)
+                    .onSubmit { applyCustomHz() }
+
+                Button(action: applyCustomHz) {
+                    Text("Áp dụng")
+                        .font(DSFont.caption)
+                        .foregroundStyle(DS.control)
+                        .padding(.horizontal, DS.s)
+                        .padding(.vertical, 3)
+                        .background(DS.control.opacity(0.12))
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(DS.control.opacity(0.3), lineWidth: DS.borderWidth)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(customHzText.isEmpty)
+                .hoverEffectHelper()
+            }
+            .padding(.top, 2)
         }
         .padding(.horizontal, DS.xs)
         .onAppear {
@@ -254,26 +325,67 @@ public struct EQCurveEditor: View {
             if i < eqController.avAudioUnit.bands.count {
                 let b = eqController.avAudioUnit.bands[i]
                 bandGains[i] = b.gain
-                bandFrequencies[i] = b.frequency
+                if b.frequency > 0 {
+                    bandFrequencies[i] = b.frequency
+                } else {
+                    bandFrequencies[i] = Self.defaultFrequencies[i]
+                }
+            } else {
+                bandFrequencies[i] = Self.defaultFrequencies[i]
             }
         }
     }
     
-    private func updateBand(index: Int, freq: Float, gain: Float) {
-        let clampedFreq = max(minFreq, min(maxFreq, freq))
+    private func updateBand(index: Int, gain: Float) {
         let clampedGain = max(minGain, min(maxGain, gain))
-        
-        bandFrequencies[index] = clampedFreq
         bandGains[index] = clampedGain
         
         eqController.setBand(
             index: index,
-            frequency: clampedFreq,
+            frequency: bandFrequencies[index],
             gain: clampedGain,
             bandwidth: 1.0, // standard Q width
             type: .parametric,
             bypass: false
         )
+    }
+
+    private func applyCustomHz() {
+        guard let hz = Float(customHzText), hz >= 20 && hz <= 20000 else { return }
+        withAnimation(.spring(response: 0.3)) {
+            eqController.applyTargetFrequency(hz: hz)
+            readBands()
+            persistState()
+        }
+    }
+
+    private func persistState() {
+        if let bundleID = bundleID {
+            AudioEngineManager.shared.persistEQForApp(bundleID: bundleID)
+        }
+    }
+
+    @ViewBuilder
+    private func presetChip(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3)) {
+                action()
+            }
+        }) {
+            Text(title)
+                .font(DSFont.caption)
+                .foregroundStyle(DS.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(DS.surface)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffectHelper()
     }
 }
 

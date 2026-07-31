@@ -36,11 +36,11 @@ public struct OutputDevicePicker: View {
         }
         .padding(.horizontal, DS.s)
         .padding(.vertical, DS.xs)
-        .background(DS.surfaceHi)
+        .background(DS.surfaceHi.opacity(0.8))
         .clipShape(RoundedRectangle(cornerRadius: DS.radiusS))
         .overlay(
             RoundedRectangle(cornerRadius: DS.radiusS)
-                .strokeBorder(DS.stroke, lineWidth: 1)
+                .strokeBorder(DS.stroke, lineWidth: DS.borderWidth)
         )
     }
 }
