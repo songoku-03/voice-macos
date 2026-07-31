@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SoundsSource — Điều khiển âm thanh từng ứng dụng macOS</title>
-  <meta name="description" content="Capture, EQ, mute và định tuyến âm thanh của bất kỳ ứng dụng macOS nào độc lập. Tiện ích menu bar miễn phí và mã nguồn mở." />
+  <meta name="description" content="Capture, EQ 10-Band, 200% Volume Boost và định tuyến âm thanh độc lập cho từng ứng dụng macOS từ Menu Bar." />
   
   <!-- Modern Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -22,6 +22,30 @@
             display: ['Outfit', 'sans-serif'],
             sans: ['Inter', 'sans-serif'],
             mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              bg: '#040711',
+              card: '#0B1120',
+              accent: '#38BDF8',
+              purple: '#818CF8',
+              pink: '#F43F5E'
+            }
+          },
+          animation: {
+            'marquee': 'marquee 30s linear infinite',
+            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'float': 'float 6s ease-in-out infinite',
+          },
+          keyframes: {
+            marquee: {
+              '0%': { transform: 'translateX(0%)' },
+              '100%': { transform: 'translateX(-50%)' }
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-10px)' }
+            }
           }
         }
       }
@@ -29,11 +53,11 @@
   </script>
 
   <style>
-    /* Custom Scrollbar & Interactive Helpers */
+    /* Custom Scrollbars */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #080C14; }
-    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    ::-webkit-scrollbar-track { background: #040711; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38BDF8; }
     
     .vu-bar { transition: height 0.08s ease; }
     .app-row.expanded .expand-icon { transform: rotate(180deg); }
@@ -42,87 +66,205 @@
     .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(5) { background-color: #F59E0B; }
     .app-row.tapped.playing:not(.muted) .vu-bar:nth-child(6) { background-color: #F87171; }
 
-    /* Doraemon Custom Cursor & Hover Effects */
-    @media (pointer: fine) {
-      body, button, a, input, select {
-        cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='46' r='44' fill='%2300A0E9' stroke='%23000' stroke-width='3'/%3E%3Cellipse cx='50' cy='54' rx='35' ry='30' fill='%23FFF' stroke='%23000' stroke-width='2.5'/%3E%3Cellipse cx='40' cy='28' rx='8' ry='12' fill='%23FFF' stroke='%23000' stroke-width='2.5'/%3E%3Cellipse cx='60' cy='28' rx='8' ry='12' fill='%23FFF' stroke='%23000' stroke-width='2.5'/%3E%3Ccircle cx='43' cy='28' r='3' fill='%23000'/%3E%3Ccircle cx='57' cy='28' r='3' fill='%23000'/%3E%3Ccircle cx='50' cy='41' r='6' fill='%23EE2737' stroke='%23000' stroke-width='2.5'/%3E%3Ccircle cx='48' cy='39' r='2' fill='%23FFF'/%3E%3Cline x1='50' y1='47' x2='50' y2='65' stroke='%23000' stroke-width='2.5'/%3E%3Cpath d='M 28 58 Q 50 78 72 58' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='18' y1='46' x2='36' y2='49' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='16' y1='55' x2='35' y2='55' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='18' y1='64' x2='36' y2='61' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='82' y1='46' x2='64' y2='49' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='84' y1='55' x2='65' y2='55' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='82' y1='64' x2='64' y2='61' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/%3E%3Crect x='22' y='84' width='56' height='10' rx='5' fill='%23EE2737' stroke='%23000' stroke-width='2'/%3E%3Ccircle cx='50' cy='90' r='5' fill='%23FFD700' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E") 0 0, auto !important;
-      }
+    /* Glass Effects & Glows */
+    .glass-panel {
+      background: rgba(11, 17, 32, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
+    
+    .glass-card {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .glow-cyan {
+      box-shadow: 0 0 40px -5px rgba(56, 189, 248, 0.4);
+    }
+    
+    .glow-purple {
+      box-shadow: 0 0 40px -5px rgba(129, 140, 248, 0.35);
+    }
+
+    /* 3D Tilt Perspective */
+    .perspective-container {
+      perspective: 1200px;
+    }
+    .tilt-window {
+      transform: rotateX(4deg) rotateY(0deg) scale(0.98);
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .perspective-container:hover .tilt-window {
+      transform: rotateX(0deg) rotateY(0deg) scale(1);
+    }
+
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-[#080C14] font-sans text-slate-100 antialiased selection:bg-sky-500/30 selection:text-sky-200">
+<body class="bg-[#040711] font-sans text-slate-100 antialiased selection:bg-sky-500/30 selection:text-sky-200">
 
-  <!-- Navigation Bar -->
-  <nav class="sticky top-0 z-50 h-16 border-b border-white/10 bg-[#080C14]/85 backdrop-blur-md">
-    <div class="mx-auto flex h-full max-w-6xl items-center justify-between px-6">
-      <a href="#" class="flex items-center gap-2.5 text-white">
-        <img src="./logo.png" alt="SoundsSource logo" class="h-8 w-8 rounded-lg border border-white/10">
-        <span class="font-display text-lg font-extrabold tracking-tight">Sounds<span class="text-sky-400">Source</span></span>
+  <!-- Dynamic Animated Background Gradients & Audio Waves Canvas -->
+  <div class="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+    <canvas id="bg-wave-canvas" class="absolute inset-0 h-full w-full opacity-35"></canvas>
+    <div class="absolute -top-40 left-1/2 -translate-x-1/2 h-[700px] w-[1200px] bg-[radial-gradient(ellipse_at_top,rgba(56,189,248,0.18),transparent_70%)]"></div>
+    <div class="absolute top-[30%] -left-60 h-[600px] w-[600px] bg-[radial-gradient(circle,rgba(129,140,248,0.15),transparent_65%)]"></div>
+    <div class="absolute top-[60%] -right-60 h-[700px] w-[700px] bg-[radial-gradient(circle,rgba(56,189,248,0.12),transparent_65%)]"></div>
+  </div>
+
+  <!-- Glass Navigation Bar -->
+  <nav class="sticky top-0 z-50 h-16 border-b border-white/10 bg-[#040711]/70 backdrop-blur-2xl">
+    <div class="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
+      <a href="#" class="group flex items-center gap-3 text-white transition">
+        <div class="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-white/20 bg-gradient-to-br from-sky-400/20 to-indigo-500/20 shadow-md transition group-hover:scale-105 group-hover:border-sky-400">
+          <img src="./logo.png" alt="SoundsSource logo" class="h-full w-full object-cover">
+        </div>
+        <span class="font-display text-xl font-black tracking-tight">Sounds<span class="bg-gradient-to-r from-sky-400 via-indigo-300 to-sky-300 bg-clip-text text-transparent">Source</span></span>
       </a>
-      <div class="hidden items-center gap-7 md:flex">
-        <a href="#features" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Tính năng</a>
-        <a href="#install" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Cài đặt</a>
-        <a href="#build" class="text-sm font-medium text-slate-400 transition hover:text-sky-400">Biên dịch Source</a>
-        <a href="https://github.com/songoku-03/voice-macos" class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:border-sky-400/50 hover:bg-sky-400/10">
+
+      <div class="hidden items-center gap-8 md:flex">
+        <a href="#features" class="text-xs font-semibold uppercase tracking-wider text-slate-300 transition hover:text-sky-400">Tính năng</a>
+        <a href="#audio-demo" class="text-xs font-semibold uppercase tracking-wider text-slate-300 transition hover:text-sky-400">Thử 40Hz &amp; 432Hz</a>
+        <a href="#install" class="text-xs font-semibold uppercase tracking-wider text-slate-300 transition hover:text-sky-400">Cài đặt</a>
+        <a href="#build" class="text-xs font-semibold uppercase tracking-wider text-slate-300 transition hover:text-sky-400">Biên dịch</a>
+        <a href="https://github.com/songoku-03/voice-macos" target="_blank" class="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-white backdrop-blur-md transition hover:border-sky-400/50 hover:bg-sky-400/10 hover:shadow-[0_0_20px_rgba(56,189,248,0.25)]">
           <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-          GitHub
+          <span>GitHub</span>
         </a>
       </div>
     </div>
   </nav>
 
-  <!-- Focused Hero Section -->
-  <header class="py-14 text-center">
-    <div class="mx-auto max-w-4xl px-6">
-      <div class="mb-5 inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-3.5 py-1 text-xs font-semibold text-sky-400">
-        <svg class="h-3 w-3 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Miễn phí &amp; Mã nguồn mở
+  <!-- Hero Section -->
+  <header class="relative z-10 pt-16 pb-12 text-center md:pt-24">
+    <div class="mx-auto max-w-5xl px-6">
+      
+      <!-- Eyebrow Pill -->
+      <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-gradient-to-r from-sky-400/15 via-indigo-500/10 to-sky-400/15 px-4 py-1.5 text-xs font-bold text-sky-300 backdrop-blur-xl shadow-[0_0_20px_rgba(56,189,248,0.2)]">
+        <span class="flex h-2 w-2 rounded-full bg-sky-400 animate-ping"></span>
+        <span>BỘ CÔNG CỤ ÂM THANH CHUYÊN NGHIỆP CHO MACOS</span>
       </div>
-      <h1 class="font-display text-4xl font-black leading-tight tracking-tight text-white md:text-5xl">
-        Điều khiển âm thanh <span class="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">từng ứng dụng</span> trên macOS
+
+      <!-- Main Headline -->
+      <h1 class="font-display text-4xl font-black leading-tight tracking-tight text-white md:text-7xl">
+        Bắt tiếng, EQ 10-Band &amp; Độc lập âm lượng <br class="hidden sm:inline" />
+        <span class="bg-gradient-to-r from-sky-400 via-indigo-300 to-sky-200 bg-clip-text text-transparent">từng ứng dụng macOS</span>
       </h1>
-      <p class="mx-auto mb-8 max-w-xl text-base text-slate-400 md:text-lg">
-        Chỉnh âm lượng, EQ 10-band và định tuyến âm thanh riêng cho từng ứng dụng macOS ngay từ Menu Bar.
+
+      <!-- Subtext (< 20 words) -->
+      <p class="mx-auto mt-6 mb-8 max-w-2xl text-base leading-relaxed text-slate-300 md:text-lg">
+        Tùy chỉnh độ lợi âm thanh, khuếch đại 200%, lọc EQ hình chuông và chuyển luồng phát riêng biệt ngay từ Menu Bar.
       </p>
-      <div class="mb-4 flex flex-wrap items-center justify-center gap-3">
-        <a href="https://github.com/songoku-03/voice-macos/releases/latest/download/SoundsSource.dmg" class="inline-flex items-center gap-2 rounded-xl bg-sky-400 px-6 py-3 font-sans text-sm font-bold text-slate-950 shadow-lg shadow-sky-400/25 transition hover:-translate-y-0.5 hover:bg-sky-300 active:translate-y-0">
-          <svg class="h-4 w-4 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Tải SoundsSource.dmg
+
+      <!-- Action Buttons -->
+      <div class="mb-12 flex flex-wrap items-center justify-center gap-4">
+        <a href="https://github.com/songoku-03/voice-macos/releases/latest/download/SoundsSource.dmg" class="glow-cyan group relative inline-flex items-center gap-3 rounded-2xl bg-sky-400 px-8 py-4 font-sans text-sm font-bold text-slate-950 transition hover:-translate-y-1 hover:bg-sky-300 active:translate-y-0">
+          <svg class="h-5 w-5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span>Tải SoundsSource.dmg</span>
         </a>
-        <a href="https://github.com/songoku-03/voice-macos" class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 font-sans text-sm font-bold text-white transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/10">
-          Xem mã nguồn GitHub
+        <a href="#audio-demo" class="inline-flex items-center gap-2.5 rounded-2xl border border-white/15 bg-white/5 px-8 py-4 font-sans text-sm font-bold text-white backdrop-blur-xl transition hover:-translate-y-1 hover:border-white/30 hover:bg-white/10">
+          <span>🎧 Nghe thử 40Hz &amp; 432Hz Live</span>
         </a>
       </div>
-      <p class="text-xs text-slate-500">Hỗ trợ macOS 14.2+ (Apple Silicon &amp; Intel)</p>
+
+      <!-- Key Metrics Counters Row -->
+      <div class="mx-auto grid max-w-3xl grid-cols-2 gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-xl md:grid-cols-4">
+        <div class="flex flex-col items-center p-2">
+          <span class="font-display text-2xl font-black text-sky-400">10-Band</span>
+          <span class="text-[11px] font-medium text-slate-400">Equalizer Đồ Thị</span>
+        </div>
+        <div class="flex flex-col items-center p-2">
+          <span class="font-display text-2xl font-black text-indigo-400">200%</span>
+          <span class="text-[11px] font-medium text-slate-400">Khuếch Đại Volume</span>
+        </div>
+        <div class="flex flex-col items-center p-2">
+          <span class="font-display text-2xl font-black text-emerald-400">0 ms</span>
+          <span class="text-[11px] font-medium text-slate-400">CoreAudio Latency</span>
+        </div>
+        <div class="flex flex-col items-center p-2">
+          <span class="font-display text-2xl font-black text-sky-300">100%</span>
+          <span class="text-[11px] font-medium text-slate-400">Miễn Phí Open Source</span>
+        </div>
+      </div>
+
     </div>
   </header>
 
-  <!-- Interactive macOS Desktop Simulator -->
-  <section class="pb-10">
-    <div class="mx-auto max-w-4xl px-4">
-      <div class="relative aspect-[16/11] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#152033] to-[#0c121e] shadow-2xl shadow-black/80">
-        <!-- Wallpaper Glow -->
-        <div class="pointer-events-none absolute -top-1/4 -left-1/4 h-[150%] w-[150%] bg-[radial-gradient(circle_at_30%_25%,rgba(56,189,248,0.12)_0%,transparent_45%),radial-gradient(circle_at_75%_65%,rgba(129,140,248,0.1)_0%,transparent_50%)]"></div>
+  <!-- Supported Apps Marquee Bar -->
+  <section class="relative z-10 overflow-hidden border-y border-white/10 bg-white/[0.01] py-5 backdrop-blur-md">
+    <div class="flex w-max animate-marquee items-center gap-12 text-slate-400">
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 fill-[#1DB954]" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.372 0 12s5.373 12 12 12 12-5.372 12-12S18.627 0 12 0zm5.49 17.31c-.216.354-.678.47-1.03.255-2.868-1.753-6.48-2.15-10.73-1.177-.403.093-.812-.162-.905-.565-.093-.404.162-.813.565-.905 4.654-1.063 8.627-.614 11.845 1.353.354.215.47.677.255 1.033zm1.464-3.26c-.272.443-.855.586-1.3.313-3.284-2.018-8.29-2.605-12.176-1.425-.5.15-1.023-.135-1.173-.634-.15-.5.135-1.02.634-1.17 4.444-1.35 9.954-.69 13.7 1.614.446.27.59.854.316 1.3zm.104-3.39c-3.938-2.34-10.434-2.553-14.215-1.404-.604.183-1.246-.157-1.43-.762-.183-.604.157-1.246.762-1.43 4.342-1.32 11.51-1.066 16.037 1.62.545.324.724 1.03.4 1.577-.324.544-1.03.722-1.577.4z"/></svg>
+        <span>Spotify</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 stroke-[#38BDF8]" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 8h8M12 16H4M15.46 14.1l-4 6.93M8.54 9.9l4-6.93"/></svg>
+        <span>Google Chrome</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 fill-[#5865F2]" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.094 13.094 0 0 1-1.873-.894.077.077 0 0 1-.008-.128c.126-.093.252-.19.372-.287a.075.075 0 0 1 .077-.011c3.92 1.793 8.18 1.793 12.061 0a.073.073 0 0 1 .078.009c.12.099.246.195.373.289a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.156 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.156 2.418z"/></svg>
+        <span>Discord</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 fill-[#FA243C]" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 17.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/></svg>
+        <span>Apple Music</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 stroke-[#F87171]" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg>
+        <span>Game 3D Steam</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 stroke-[#A855F7]" viewBox="0 0 24 24" fill="none" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span>Logic Pro &amp; Final Cut</span>
+      </div>
+      <!-- Duplicate for seamless infinite marquee loop -->
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 fill-[#1DB954]" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.372 0 12s5.373 12 12 12 12-5.372 12-12S18.627 0 12 0zm5.49 17.31c-.216.354-.678.47-1.03.255-2.868-1.753-6.48-2.15-10.73-1.177-.403.093-.812-.162-.905-.565-.093-.404.162-.813.565-.905 4.654-1.063 8.627-.614 11.845 1.353.354.215.47.677.255 1.033zm1.464-3.26c-.272.443-.855.586-1.3.313-3.284-2.018-8.29-2.605-12.176-1.425-.5.15-1.023-.135-1.173-.634-.15-.5.135-1.02.634-1.17 4.444-1.35 9.954-.69 13.7 1.614.446.27.59.854.316 1.3zm.104-3.39c-3.938-2.34-10.434-2.553-14.215-1.404-.604.183-1.246-.157-1.43-.762-.183-.604.157-1.246.762-1.43 4.342-1.32 11.51-1.066 16.037 1.62.545.324.724 1.03.4 1.577-.324.544-1.03.722-1.577.4z"/></svg>
+        <span>Spotify</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 stroke-[#38BDF8]" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 8h8M12 16H4M15.46 14.1l-4 6.93M8.54 9.9l4-6.93"/></svg>
+        <span>Google Chrome</span>
+      </div>
+      <div class="flex items-center gap-3 font-display text-xs font-bold uppercase tracking-wider text-slate-300">
+        <svg class="h-4 w-4 fill-[#5865F2]" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.094 13.094 0 0 1-1.873-.894.077.077 0 0 1-.008-.128c.126-.093.252-.19.372-.287a.075.075 0 0 1 .077-.011c3.92 1.793 8.18 1.793 12.061 0a.073.073 0 0 1 .078.009c.12.099.246.195.373.289a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.156 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.156 2.418z"/></svg>
+        <span>Discord</span>
+      </div>
+    </div>
+  </section>
 
-        <!-- macOS Menu Bar -->
-        <div class="relative z-10 flex h-7 items-center justify-between border-b border-white/10 bg-[#0c121e]/75 px-4 font-sans text-xs text-white/90 backdrop-blur-md">
-          <div class="flex items-center gap-3.5">
-            <span></span>
-            <span class="font-semibold">Finder</span>
-            <span class="opacity-60">File</span>
-            <span class="opacity-60">Edit</span>
-            <span class="opacity-60">View</span>
-            <span class="opacity-60">Go</span>
-            <span class="opacity-60">Window</span>
-            <span class="opacity-60">Help</span>
+  <!-- Interactive 3D macOS Desktop Simulator -->
+  <section class="perspective-container relative z-10 py-16">
+    <div class="mx-auto max-w-4xl px-4">
+      
+      <div class="tilt-window relative aspect-[16/11] overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-[#0F172A] via-[#080D1A] to-[#030509] shadow-2xl shadow-black/90">
+        
+        <!-- Wallpaper Light Reflective Glow -->
+        <div class="pointer-events-none absolute -top-1/2 -left-1/2 h-[200%] w-[200%] bg-[radial-gradient(circle_at_35%_35%,rgba(56,189,248,0.18)_0%,transparent_50%),radial-gradient(circle_at_65%_65%,rgba(129,140,248,0.15)_0%,transparent_55%)]"></div>
+
+        <!-- macOS Menu Bar Header -->
+        <div class="relative z-10 flex h-9 items-center justify-between border-b border-white/10 bg-[#080D1A]/85 px-4 font-sans text-xs text-white/90 backdrop-blur-2xl">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              <span class="h-3 w-3 rounded-full bg-[#FF5F56] border border-black/20"></span>
+              <span class="h-3 w-3 rounded-full bg-[#FFBD2E] border border-black/20"></span>
+              <span class="h-3 w-3 rounded-full bg-[#27C93F] border border-black/20"></span>
+            </div>
+            <span class="font-bold text-slate-200">SoundsSource App</span>
+            <span class="opacity-50 hidden sm:inline">File</span>
+            <span class="opacity-50 hidden sm:inline">Edit</span>
+            <span class="opacity-50 hidden sm:inline">View</span>
           </div>
-          <div class="flex items-center gap-3.5">
-            <svg class="h-3.5 w-3.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h.01M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 14 0M1.5 9.5a15 15 0 0 1 21 0"/></svg>
-            <svg class="h-3.5 w-3.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2" ry="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg>
-            <span class="font-semibold" id="mac-clock">Sat 11:52 PM</span>
+
+          <div class="flex items-center gap-4">
+            <span class="font-mono text-[11px] font-semibold" id="mac-clock">Sat 12:00 PM</span>
             
-            <div id="popover-trigger" class="active flex cursor-pointer items-center justify-center rounded px-1.5 py-0.5 text-sky-400 transition hover:bg-sky-400/20" title="Mở SoundsSource">
-              <svg class="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+            <!-- SoundsSource Status Bar Icon Trigger -->
+            <div id="popover-trigger" class="active flex cursor-pointer items-center justify-center rounded-lg bg-sky-400/25 px-2.5 py-1 text-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.5)] transition hover:bg-sky-400/40" title="Mở SoundsSource Menu">
+              <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24">
                 <rect x="3" y="10" width="3" height="4" rx="1.5"/>
                 <rect x="8" y="6" width="3" height="12" rx="1.5"/>
                 <rect x="13" y="2" width="3" height="20" rx="1.5"/>
@@ -133,169 +275,240 @@
         </div>
 
         <!-- Popover App Window -->
-        <div id="app-popover" class="open absolute top-9 right-3.5 z-20 flex max-h-[calc(100%-44px)] w-[350px] flex-col overflow-hidden rounded-xl border border-white/15 bg-[#0E1626]/95 shadow-2xl backdrop-blur-xl transition-all duration-200">
-          <div class="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-3.5 py-2.5">
-            <span class="font-display text-sm font-extrabold text-white">SoundsSource</span>
-            <select id="system-output" class="max-w-[145px] appearance-none rounded border border-white/10 bg-[#0E1626] px-2 py-1 text-[11px] font-semibold text-slate-200 outline-none hover:border-sky-400/40">
+        <div id="app-popover" class="open absolute top-12 right-4 z-20 flex max-h-[calc(100%-56px)] w-[370px] flex-col overflow-hidden rounded-2xl border border-white/20 bg-[#0A101E]/95 shadow-2xl backdrop-blur-2xl transition-all duration-200">
+          
+          <!-- Header Output Device Selector -->
+          <div class="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-4 py-3">
+            <span class="font-display text-sm font-black tracking-tight text-white">SoundsSource</span>
+            <select id="system-output" class="max-w-[160px] appearance-none rounded-lg border border-white/10 bg-[#0D1628] px-2.5 py-1 text-[11px] font-semibold text-slate-200 outline-none transition hover:border-sky-400/50">
               <option value="speakers"> MacBook Pro Speakers</option>
               <option value="headphones">🎧 AirPods Max</option>
               <option value="display">📺 Studio Display Loa</option>
             </select>
           </div>
 
-          <div id="apps-list" class="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2.5">
+          <!-- Apps Audio Control Rows Container -->
+          <div id="apps-list" class="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
           </div>
 
           <!-- Pomodoro / Eye Rest Panel -->
-          <div id="eye-rest-panel" class="m-2.5 flex flex-col gap-2 rounded-xl border border-white/10 bg-[#0E1626] p-2.5">
+          <div id="eye-rest-panel" class="m-3 flex flex-col gap-2.5 rounded-xl border border-white/10 bg-[#0D1628] p-3 shadow-md">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 font-display text-[11px] font-extrabold uppercase tracking-wider text-white">
-                <svg class="h-3.5 w-3.5 fill-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span>Nghỉ mắt</span>
+                <svg class="h-3.5 w-3.5 fill-sky-400" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Nghỉ mắt Pomodoro</span>
               </div>
-              <div id="eye-rest-status-badge" class="hidden items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400">
-                <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
+              <div id="eye-rest-status-badge" class="hidden items-center gap-1.5 rounded-full bg-sky-400/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-sky-400 border border-sky-400/30">
+                <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
                 <span id="eye-rest-status-text">📖 25:00</span>
               </div>
             </div>
             <div id="eye-rest-inputs" class="flex gap-2">
               <div class="flex flex-1 flex-col gap-1">
                 <span class="text-[10px] text-slate-400">Học (phút)</span>
-                <input type="number" id="eye-rest-study" value="25" min="1" max="120" class="w-full rounded border border-white/10 bg-[#152033] p-1 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
+                <input type="number" id="eye-rest-study" value="25" min="1" max="120" class="w-full rounded-lg border border-white/10 bg-[#142036] p-1.5 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
               </div>
               <div class="flex flex-1 flex-col gap-1">
                 <span class="text-[10px] text-slate-400">Nghỉ (phút)</span>
-                <input type="number" id="eye-rest-break" value="5" min="1" max="60" class="w-full rounded border border-white/10 bg-[#152033] p-1 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
+                <input type="number" id="eye-rest-break" value="5" min="1" max="60" class="w-full rounded-lg border border-white/10 bg-[#142036] p-1.5 text-center font-mono text-[11px] font-bold text-white outline-none focus:border-sky-400">
               </div>
             </div>
-            <button id="eye-rest-btn" onclick="toggleEyeRest()" class="flex items-center justify-center gap-1.5 rounded-lg bg-sky-400 p-1.5 text-xs font-bold text-slate-950 transition hover:bg-sky-300">
+            <button id="eye-rest-btn" onclick="toggleEyeRest()" class="flex items-center justify-center gap-1.5 rounded-xl bg-sky-400 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-300">
               <svg id="eye-rest-btn-icon" class="h-3 w-3 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
               <span id="eye-rest-btn-text">Bắt đầu</span>
             </button>
           </div>
 
-          <div class="flex items-center justify-between border-t border-white/10 bg-white/[0.03] px-3.5 py-2">
-            <button id="save-preset-btn" class="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-white/10 hover:text-white">
+          <!-- Footer Action Buttons -->
+          <div class="flex items-center justify-between border-t border-white/10 bg-white/[0.03] px-4 py-2.5">
+            <button id="save-preset-btn" class="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-slate-300 transition hover:bg-white/10 hover:text-white">
               <svg class="h-3 w-3 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-              Save Preset
+              <span>Save Preset</span>
             </button>
-            <button id="quit-app-btn" class="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-400 transition hover:bg-red-500/20">
+            <button id="quit-app-btn" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-400 transition hover:bg-red-500/20">
               Quit SoundsSource
             </button>
           </div>
         </div>
+
       </div>
+
+    </div>
+  </section>
+
+  <!-- Interactive Web Audio Generator Section -->
+  <section id="audio-demo" class="relative z-10 scroll-mt-20 border-t border-white/10 py-20">
+    <div class="mx-auto max-w-5xl px-6">
       
-      <!-- Interactive Guidance -->
-      <div class="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
-        <div class="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          <span class="h-2 w-2 rounded-full bg-sky-400"></span>
-          <span>Bấm icon <span class="font-semibold text-sky-400">🎛️</span> trên Menu Bar để đóng/mở popover</span>
+      <div class="mb-12 text-center">
+        <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-1 text-xs font-bold text-sky-400">
+          <span>🎧 TRẢI NGHIỆM TRỰC TIẾP TRÊN TRÌNH DUYỆT</span>
         </div>
-        <div class="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-          <span>💡 <span class="font-semibold text-sky-400">Kéo điểm EQ</span> để tùy chỉnh âm thanh live</span>
-        </div>
+        <h2 class="font-display text-3xl font-black tracking-tight text-white md:text-4xl">
+          Phát Âm Thanh Tần Số Focus 40 Hz &amp; 432 Hz Live
+        </h2>
+        <p class="mt-3 text-sm text-slate-400 md:text-base">Bấm nút bên dưới để nghe thử sóng âm thanh sóng não trực tiếp bằng Web Audio API!</p>
       </div>
+
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+        
+        <!-- 40 Hz Focus Card -->
+        <div class="glass-card group relative flex flex-col justify-between overflow-hidden rounded-3xl p-8 transition hover:-translate-y-1 hover:border-sky-400/50 hover:shadow-2xl hover:shadow-sky-500/15">
+          <div>
+            <div class="mb-4 flex items-center justify-between">
+              <span class="rounded-full border border-sky-400/40 bg-sky-400/15 px-3 py-1 font-mono text-xs font-bold text-sky-300">🎯 40 Hz GAMMA WAVE</span>
+              <span class="text-xs font-semibold text-slate-400">Tập trung cao độ</span>
+            </div>
+            <h3 class="mb-2 font-display text-2xl font-bold text-white">Sóng Não Gamma 40 Hz</h3>
+            <p class="text-sm leading-relaxed text-slate-300">Tần số 40 Hz giúp kích thích sóng não Gamma, gia tăng khả năng ghi nhớ, tập trung giải quyết công việc phức tạp hoặc lập trình.</p>
+          </div>
+
+          <div class="mt-8 flex items-center justify-between">
+            <button onclick="playTone(40, this)" class="flex items-center gap-2 rounded-2xl bg-sky-400 px-6 py-3 font-sans text-xs font-bold text-slate-950 transition hover:bg-sky-300">
+              <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <span>Phát Sóng 40 Hz</span>
+            </button>
+            <span class="font-mono text-xs text-sky-400 font-bold audio-status">Sẵn sàng</span>
+          </div>
+        </div>
+
+        <!-- 432 Hz Healing Card -->
+        <div class="glass-card group relative flex flex-col justify-between overflow-hidden rounded-3xl p-8 transition hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/15">
+          <div>
+            <div class="mb-4 flex items-center justify-between">
+              <span class="rounded-full border border-indigo-400/40 bg-indigo-400/15 px-3 py-1 font-mono text-xs font-bold text-indigo-300">🌙 432 Hz HEALING TONE</span>
+              <span class="text-xs font-semibold text-slate-400">Thư giãn &amp; Dễ ngủ</span>
+            </div>
+            <h3 class="mb-2 font-display text-2xl font-bold text-white">Tần Số Xoa Dịu 432 Hz</h3>
+            <p class="text-sm leading-relaxed text-slate-300">Tần số tự nhiên 432 Hz có khả năng xoa dịu hệ thần kinh, giảm bớt căng thẳng sau giờ làm việc và đưa cơ thể vào trạng thái thư thái sâu.</p>
+          </div>
+
+          <div class="mt-8 flex items-center justify-between">
+            <button onclick="playTone(432, this)" class="flex items-center gap-2 rounded-2xl bg-indigo-400 px-6 py-3 font-sans text-xs font-bold text-slate-950 transition hover:bg-indigo-300">
+              <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <span>Phát Sóng 432 Hz</span>
+            </button>
+            <span class="font-mono text-xs text-indigo-400 font-bold audio-status">Sẵn sàng</span>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   </section>
 
   <!-- Bento Features Grid -->
-  <section id="features" class="scroll-mt-20 border-t border-white/10 py-16">
+  <section id="features" class="relative z-10 scroll-mt-20 border-t border-white/10 py-20">
     <div class="mx-auto max-w-6xl px-6">
-      <h2 class="mb-10 text-center font-display text-3xl font-extrabold tracking-tight text-white">Tính năng nổi bật</h2>
       
-      <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
-        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-sky-400/40 hover:shadow-xl hover:shadow-black/50 md:col-span-2">
-          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 text-sky-400">
-            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M19 12h2M3 12h2M12 3v2M12 19v2"/></svg>
+      <div class="mb-14 text-center">
+        <h2 class="font-display text-3xl font-black tracking-tight text-white md:text-5xl">
+          Tính năng vượt trội của SoundsSource
+        </h2>
+        <p class="mt-3 text-sm text-slate-400 md:text-base">Thiết kế hoàn toàn bằng CoreAudio native của Apple.</p>
+      </div>
+      
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+        
+        <!-- Bento 1: App Capture -->
+        <div class="glass-card group rounded-3xl p-8 transition hover:-translate-y-1 hover:border-sky-400/50 hover:shadow-2xl hover:shadow-sky-500/10 md:col-span-2">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-400/30 bg-sky-400/10 text-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
+            <svg class="h-6 w-6 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M19 12h2M3 12h2M12 3v2M12 19v2"/></svg>
           </div>
-          <h3 class="mb-2 font-display text-xl font-bold text-white">Bắt (Capture) tiếng từng ứng dụng</h3>
-          <p class="text-sm leading-relaxed text-slate-400">Tách biệt luồng âm thanh tiến trình của bất kỳ ứng dụng nào đang chạy: Spotify, Chrome, Safari, Discord, game 3D hay VLC mà không ảnh hưởng tới các app khác.</p>
+          <h3 class="mb-3 font-display text-2xl font-bold text-white">Bắt (Capture) tiếng độc lập từng app</h3>
+          <p class="text-sm leading-relaxed text-slate-300">Tách biệt luồng âm thanh tiến trình của từng app đang chạy: Spotify, Chrome, Safari, Discord, game 3D hay VLC mà không ảnh hưởng tới các app còn lại.</p>
         </div>
 
-        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-indigo-400/40 hover:shadow-xl hover:shadow-black/50">
-          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400">
-            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        <!-- Bento 2: Volume & Mute -->
+        <div class="glass-card group rounded-3xl p-8 transition hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.25)]">
+            <svg class="h-6 w-6 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
           </div>
-          <h3 class="mb-2 font-display text-xl font-bold text-white">Âm lượng &amp; Mute độc lập</h3>
-          <p class="text-sm leading-relaxed text-slate-400">Khuếch đại âm lượng đến 200% hoặc tắt tiếng nhanh cho từng app riêng biệt.</p>
+          <h3 class="mb-3 font-display text-2xl font-bold text-white">Khuếch đại 200% &amp; Mute</h3>
+          <p class="text-sm leading-relaxed text-slate-300">Khuếch đại âm lượng lên tới 200% cho ứng dụng bị nhỏ tiếng hoặc tắt tiếng nhanh từng ứng dụng độc lập.</p>
         </div>
 
-        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-indigo-400/40 hover:shadow-xl hover:shadow-black/50">
-          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400">
-            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <!-- Bento 3: Equalizer & Custom Hz Presets -->
+        <div class="glass-card group rounded-3xl p-8 transition hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-400/10 text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.25)]">
+            <svg class="h-6 w-6 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
           </div>
-          <h3 class="mb-2 font-display text-xl font-bold text-white">Equalizer 10-band trực quan</h3>
-          <p class="text-sm leading-relaxed text-slate-400">Điều chỉnh đường cong âm sắc từ 32 Hz đến 16 kHz bằng đồ thị kéo thả mượt mà.</p>
+          <h3 class="mb-3 font-display text-2xl font-bold text-white">EQ 10-Band &amp; Mốc Hz Tùy Chỉnh</h3>
+          <p class="text-sm leading-relaxed text-slate-300">Biểu đồ EQ hình chuông mượt mà từ 32 Hz đến 16 kHz. Tích hợp sẵn phím tắt <b class="text-sky-400">40 Hz Focus</b>, <b class="text-indigo-300">432 Hz Healing</b> và ô nhập Hz tùy ý.</p>
         </div>
 
-        <div class="group rounded-2xl border border-white/10 bg-[#0E1626] p-7 transition hover:-translate-y-1 hover:border-sky-400/40 hover:shadow-xl hover:shadow-black/50 md:col-span-2">
-          <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 text-sky-400">
-            <svg class="h-5.5 w-5.5 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+        <!-- Bento 4: Route Output -->
+        <div class="glass-card group rounded-3xl p-8 transition hover:-translate-y-1 hover:border-sky-400/50 hover:shadow-2xl hover:shadow-sky-500/10 md:col-span-2">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-400/30 bg-sky-400/10 text-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
+            <svg class="h-6 w-6 stroke-current" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
           </div>
-          <h3 class="mb-2 font-display text-xl font-bold text-white">Định tuyến (Route) âm thanh linh hoạt</h3>
-          <p class="text-sm leading-relaxed text-slate-400">Đẩy âm thanh từng app ra thiết bị phát khác nhau: Nhạc Spotify phát ra AirPods Max, thoại Discord ra loa Studio Display.</p>
+          <h3 class="mb-3 font-display text-2xl font-bold text-white">Định tuyến (Route) âm thanh đa thiết bị</h3>
+          <p class="text-sm leading-relaxed text-slate-300">Phát tiếng Spotify ra tai nghe AirPods Max trong khi thoại Discord phát ra loa ngoài MacBook hoặc màn hình Studio Display hoàn toàn song song.</p>
         </div>
+
       </div>
     </div>
   </section>
 
   <!-- Installation Steps -->
-  <section id="install" class="scroll-mt-20 border-t border-white/10 py-16">
+  <section id="install" class="relative z-10 scroll-mt-20 border-t border-white/10 py-20">
     <div class="mx-auto max-w-6xl px-6">
-      <h2 class="mb-10 text-center font-display text-3xl font-extrabold tracking-tight text-white">Hướng dẫn cài đặt</h2>
+      <h2 class="mb-14 text-center font-display text-3xl font-black tracking-tight text-white md:text-4xl">Hướng dẫn cài đặt nhanh</h2>
       
-      <div class="relative mx-auto max-w-2xl space-y-8 before:absolute before:top-2.5 before:bottom-2.5 before:left-[19px] before:w-0.5 before:bg-white/10">
-        <div class="group relative flex items-start gap-5 pl-14">
-          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">1</div>
+      <div class="relative mx-auto max-w-2xl space-y-10 before:absolute before:top-3 before:bottom-3 before:left-[21px] before:w-0.5 before:bg-white/10">
+        
+        <div class="group relative flex items-start gap-6 pl-16">
+          <div class="absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0B1120] font-display text-base font-bold text-slate-300 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400 group-hover:shadow-[0_0_20px_rgba(56,189,248,0.35)]">1</div>
           <div>
-            <h3 class="font-bold text-white">Tải file đóng gói DMG</h3>
-            <p class="text-sm text-slate-400">Nhấp nút tải ở đầu trang để lấy bản đóng gói <b>SoundsSource.dmg</b> chính thức từ Releases.</p>
+            <h3 class="font-display text-lg font-bold text-white">Tải bộ cài SoundsSource.dmg</h3>
+            <p class="mt-1 text-sm leading-relaxed text-slate-400">Bấm nút tải ở đầu trang để tải bản đóng gói <b>SoundsSource.dmg</b> chính thức từ Releases.</p>
           </div>
         </div>
 
-        <div class="group relative flex items-start gap-5 pl-14">
-          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">2</div>
+        <div class="group relative flex items-start gap-6 pl-16">
+          <div class="absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0B1120] font-display text-base font-bold text-slate-300 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400 group-hover:shadow-[0_0_20px_rgba(56,189,248,0.35)]">2</div>
           <div>
-            <h3 class="font-bold text-white">Kéo thả vào Applications</h3>
-            <p class="text-sm text-slate-400">Mở file DMG vừa tải, kéo biểu tượng <b>SoundsSource</b> vào thư mục <b>Applications</b> trên Mac.</p>
+            <h3 class="font-display text-lg font-bold text-white">Kéo thả vào Applications</h3>
+            <p class="mt-1 text-sm leading-relaxed text-slate-400">Mở file DMG vừa tải về và kéo biểu tượng <b>SoundsSource</b> vào thư mục <b>Applications</b> trên Mac.</p>
           </div>
         </div>
 
-        <div class="group relative flex items-start gap-5 pl-14">
-          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">3</div>
+        <div class="group relative flex items-start gap-6 pl-16">
+          <div class="absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0B1120] font-display text-base font-bold text-slate-300 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400 group-hover:shadow-[0_0_20px_rgba(56,189,248,0.35)]">3</div>
           <div>
-            <h3 class="font-bold text-white">Cấp quyền Audio Capture</h3>
-            <p class="text-sm text-slate-400">Khởi chạy ứng dụng lần đầu và chọn <b>Allow</b> khi macOS yêu cầu cấp quyền thu âm để tiến trình capture âm thanh.</p>
+            <h3 class="font-display text-lg font-bold text-white">Cấp quyền Audio Capture</h3>
+            <p class="mt-1 text-sm leading-relaxed text-slate-400">Khởi chạy ứng dụng lần đầu và chọn <b>Allow</b> khi macOS yêu cầu cấp quyền thu âm để tiến trình bắt tiếng hoạt động.</p>
           </div>
         </div>
 
-        <div class="group relative flex items-start gap-5 pl-14">
-          <div class="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0E1626] font-bold text-slate-400 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400">4</div>
+        <div class="group relative flex items-start gap-6 pl-16">
+          <div class="absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0B1120] font-display text-base font-bold text-slate-300 transition group-hover:border-sky-400 group-hover:bg-sky-400/10 group-hover:text-sky-400 group-hover:shadow-[0_0_20px_rgba(56,189,248,0.35)]">4</div>
           <div>
-            <h3 class="font-bold text-white">Sử dụng từ Menu Bar</h3>
-            <p class="text-sm text-slate-400">Nhấp vào biểu tượng sóng âm trên thanh Menu Bar để mở bảng điều khiển bất cứ lúc nào.</p>
+            <h3 class="font-display text-lg font-bold text-white">Sử dụng từ Menu Bar</h3>
+            <p class="mt-1 text-sm leading-relaxed text-slate-400">Bấm biểu tượng sóng âm trên thanh Menu Bar ở góc trên màn hình để mở bảng điều khiển bất cứ lúc nào.</p>
           </div>
         </div>
+
       </div>
 
-      <!-- Alert Card -->
-      <div class="mx-auto mt-10 max-w-2xl rounded-r-xl border-l-4 border-amber-500 border-y border-r border-amber-500/20 bg-amber-500/5 p-5">
-        <h4 class="mb-2 flex items-center gap-2 text-sm font-bold text-amber-400">
-          <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-          Gỡ cảnh báo Unidentified Developer (quarantine)
+      <!-- Quarantine Gatekeeper Notice -->
+      <div class="mx-auto mt-12 max-w-2xl rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-amber-500/5 p-7 backdrop-blur-xl shadow-xl">
+        <h4 class="mb-3 flex items-center gap-2 font-display text-base font-bold text-amber-300">
+          <svg class="h-5 w-5 fill-current text-amber-400" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          Mở ứng dụng lần đầu (Cảnh báo Unidentified Developer)
         </h4>
-        <p class="mb-2 text-xs text-slate-400">
-          Vì app được ký chữ ký ad-hoc mã nguồn mở, macOS có thể hiển thị cảnh báo khi mở lần đầu. Bạn có thể mở nhanh bằng 2 cách:
+        <p class="mb-3 text-xs leading-relaxed text-slate-300">
+          Vì ứng dụng được ký ad-hoc mã nguồn mở, macOS có thể hiển thị cảnh báo khi mở lần đầu. Bạn có thể mở nhanh bằng 2 cách:
         </p>
-        <p class="mb-1 text-xs text-slate-400">• <b>Cách 1</b>: Chuột phải vào app trong Applications → chọn <b>Open</b>.</p>
-        <p class="mb-2 text-xs text-slate-400">• <b>Cách 2</b>: Dán lệnh sau vào Terminal để gỡ cờ kiểm dịch cách ly:</p>
-        <div class="relative overflow-hidden rounded-lg border border-white/10 bg-[#05080e]">
-          <button onclick="copySnippet(this, 'quarantine-cmd')" class="copy-btn absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-sky-400">
-            <svg class="copy-icon h-3.5 w-3.5" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            <svg class="check-icon hidden h-3.5 w-3.5 stroke-emerald-400" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <p class="mb-1.5 text-xs text-slate-300">• <b>Cách 1</b>: Chuột phải vào ứng dụng SoundsSource trong Applications → Chọn <b>Open</b>.</p>
+        <p class="mb-3 text-xs text-slate-300">• <b>Cách 2</b>: Dán lệnh Terminal sau để gỡ cờ kiểm dịch cách ly:</p>
+        
+        <div class="relative overflow-hidden rounded-xl border border-white/10 bg-[#040711] p-4 font-mono text-xs text-slate-200">
+          <button onclick="copySnippet(this, 'quarantine-cmd')" class="copy-btn absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-sky-400">
+            <svg class="copy-icon h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg class="check-icon hidden h-4 w-4 stroke-emerald-400" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <code id="quarantine-cmd" class="block p-3.5 font-mono text-xs text-slate-200">xattr -dr com.apple.quarantine /Applications/SoundsSource.app</code>
+          <code id="quarantine-cmd" class="block pr-10">xattr -dr com.apple.quarantine /Applications/SoundsSource.app</code>
         </div>
       </div>
 
@@ -303,32 +516,114 @@
   </section>
 
   <!-- Build Section -->
-  <section id="build" class="scroll-mt-20 border-t border-white/10 py-16">
+  <section id="build" class="relative z-10 scroll-mt-20 border-t border-white/10 py-20">
     <div class="mx-auto max-w-2xl px-6 text-center">
-      <h2 class="mb-4 font-display text-3xl font-extrabold tracking-tight text-white">Tự biên dịch từ mã nguồn</h2>
-      <p class="mb-7 text-sm text-slate-400">Chạy các lệnh sau trong Terminal để build file DMG thành phẩm (Yêu cầu macOS 14.2+ &amp; Xcode 16+):</p>
+      <h2 class="mb-4 font-display text-3xl font-black tracking-tight text-white">Tự biên dịch từ Mã Nguồn</h2>
+      <p class="mb-8 text-sm leading-relaxed text-slate-400">Chạy các lệnh sau trong Terminal để tự build bản đóng gói DMG (Yêu cầu macOS 14.2+ &amp; Xcode 16+):</p>
       
-      <div class="relative overflow-hidden rounded-lg border border-white/10 bg-[#05080e] text-left">
-        <button onclick="copySnippet(this, 'build-cmd')" class="copy-btn absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-sky-400">
-          <svg class="copy-icon h-3.5 w-3.5" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <svg class="check-icon hidden h-3.5 w-3.5 stroke-emerald-400" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-[#040711] text-left">
+        <button onclick="copySnippet(this, 'build-cmd')" class="copy-btn absolute top-3.5 right-3.5 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-sky-400">
+          <svg class="copy-icon h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg class="check-icon hidden h-4 w-4 stroke-emerald-400" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
-        <code id="build-cmd" class="block p-4 font-mono text-xs leading-relaxed text-slate-200">git clone https://github.com/songoku-03/voice-macos.git
+        <code id="build-cmd" class="block p-5 font-mono text-xs leading-relaxed text-slate-200">git clone https://github.com/songoku-03/voice-macos.git
 cd voice-macos
 ./scripts/build_dmg.sh</code>
       </div>
     </div>
   </section>
 
-  <footer class="border-t border-white/10 bg-[#05080e] py-10 text-center text-xs text-slate-400">
+  <!-- Footer -->
+  <footer class="relative z-10 border-t border-white/10 bg-[#020409] py-12 text-center text-xs text-slate-400">
     <div class="mx-auto max-w-6xl px-6">
-      <p>SoundsSource · Dự án mã nguồn mở đăng tải trên <a href="https://github.com/songoku-03/voice-macos" target="_blank" class="text-sky-400 hover:text-indigo-400">GitHub</a></p>
-      <p class="mt-1.5 text-[11px] text-slate-500">Xây dựng bằng CoreAudio Process Taps kết hợp với đồ thị node AVAudioEngine của Apple.</p>
+      <p class="font-medium">SoundsSource · Dự án mã nguồn mở đăng tải trên <a href="https://github.com/songoku-03/voice-macos" target="_blank" class="text-sky-400 transition hover:text-sky-300 underline underline-offset-4">GitHub</a></p>
+      <p class="mt-2 text-[11px] text-slate-500">Phát triển dựa trên kiến trúc CoreAudio Process Taps kết hợp bộ lọc đồ thị AVAudioEngine của Apple.</p>
     </div>
   </footer>
 
-  <!-- Interactive Desktop Simulator Logic -->
+  <!-- Interactive Desktop Simulator & Web Audio Scripts -->
   <script>
+    // 1. Dynamic Audio Waveform Canvas Background Animation
+    const canvas = document.getElementById('bg-wave-canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      let width, height;
+      let phase = 0;
+
+      function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      function drawWaves() {
+        ctx.clearRect(0, 0, width, height);
+        phase += 0.01;
+
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = i === 0 ? 'rgba(56, 189, 248, 0.15)' : (i === 1 ? 'rgba(129, 140, 248, 0.12)' : 'rgba(56, 189, 248, 0.08)');
+          
+          for (let x = 0; x < width; x += 10) {
+            const freq = 0.003 + (i * 0.001);
+            const amp = 30 + (i * 20);
+            const y = height / 2 + Math.sin(x * freq + phase + i) * amp * Math.cos(x * 0.001);
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        requestAnimationFrame(drawWaves);
+      }
+      drawWaves();
+    }
+
+    // 2. Web Audio Tone Generator (40 Hz & 432 Hz)
+    let audioCtx = null;
+    let currentOsc = null;
+    let currentGain = null;
+
+    function playTone(freq, btn) {
+      const statusText = btn.parentElement.querySelector('.audio-status');
+      
+      if (currentOsc) {
+        currentOsc.stop();
+        currentOsc.disconnect();
+        currentOsc = null;
+        if (statusText) statusText.innerText = 'Sẵn sàng';
+        btn.querySelector('span').innerText = `Phát Sóng ${freq} Hz`;
+        return;
+      }
+
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      currentOsc = audioCtx.createOscillator();
+      currentGain = audioCtx.createGain();
+
+      currentOsc.type = 'sine';
+      currentOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+      // Smooth volume fade-in
+      currentGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      currentGain.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.3);
+
+      currentOsc.connect(currentGain);
+      currentGain.connect(audioCtx.destination);
+
+      currentOsc.start();
+      if (statusText) statusText.innerText = '🔊 Đang phát...';
+      btn.querySelector('span').innerText = 'Dừng Âm Thanh';
+    }
+
+    // 3. Desktop Simulator Logic
     const state = {
       activePreset: 'Flat',
       outputDevice: 'speakers',
@@ -343,6 +638,7 @@ cd voice-macos
           volume: 1.0,
           muted: false,
           eqBypassed: false,
+          customHzText: '',
           eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
           outputDevice: 'headphones'
         },
@@ -356,6 +652,7 @@ cd voice-macos
           volume: 0.8,
           muted: true,
           eqBypassed: true,
+          customHzText: '',
           eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
           outputDevice: 'speakers'
         },
@@ -369,6 +666,7 @@ cd voice-macos
           volume: 1.0,
           muted: false,
           eqBypassed: false,
+          customHzText: '',
           eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
           outputDevice: 'speakers'
         },
@@ -382,6 +680,7 @@ cd voice-macos
           volume: 1.2,
           muted: false,
           eqBypassed: false,
+          customHzText: '',
           eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
           outputDevice: 'speakers'
         }
@@ -390,11 +689,10 @@ cd voice-macos
 
     const PRESETS = {
       'Flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      'Bass Booster': [6, 5, 4, 2, 0, 0, 0, 0, 1, 2],
-      'Vocal Booster': [-3, -2, -1, 1, 3, 4, 4, 3, 2, 1],
-      'Podcast': [-4, -2, 0, 2, 4, 4, 3, 2, 1, 0],
-      'Rock': [4, 3, 2, -1, -2, -1, 1, 3, 4, 4],
-      'Electronic': [5, 4, 1, 0, -1, 2, 1, 2, 4, 5]
+      '🎯 40 Hz': [10, 7, 3, 0, 0, 0, 0, 0, 0, 0],
+      '🌙 432 Hz': [1, 3, 7, 10, 6, 2, 0, 0, 0, 0],
+      '🔊 Bass': [8, 7, 5, 2, 0, 0, 0, 0, 1, 2],
+      '🎙️ Vocal': [-2, -1, 0, 2, 5, 7, 6, 3, 1, 0]
     };
 
     const SVG_ICONS = {
@@ -449,38 +747,38 @@ cd voice-macos
 
       state.apps.forEach(app => {
         const row = document.createElement('div');
-        row.className = `app-row ${app.tapped ? 'tapped border-white/10 bg-[#152033]' : 'disabled border-white/5 bg-[#152033]/50 opacity-60'} ${app.isPlaying ? 'playing' : ''} ${app.expanded ? 'expanded border-sky-400/40 bg-[#1C2B45]' : ''} ${app.muted ? 'muted' : ''} flex flex-col rounded-xl border transition-all duration-150`;
+        row.className = `app-row ${app.tapped ? 'tapped border-white/15 bg-[#121B2E]' : 'disabled border-white/5 bg-[#121B2E]/40 opacity-60'} ${app.isPlaying ? 'playing' : ''} ${app.expanded ? 'expanded border-sky-400/50 bg-[#16233B]' : ''} ${app.muted ? 'muted' : ''} flex flex-col rounded-xl border transition-all duration-200 shadow-md`;
         row.id = `row-${app.id}`;
         
         row.innerHTML = `
           <div class="row-header flex cursor-pointer items-center justify-between p-2.5 text-xs select-none" onclick="handleRowHeaderClick('${app.id}')">
             <div class="flex items-center gap-2.5">
-              <div class="flex h-6 w-6 items-center justify-center overflow-hidden rounded">${SVG_ICONS[app.icon]}</div>
-              <div class="flex items-center gap-1.5">
+              <div class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md">${SVG_ICONS[app.icon]}</div>
+              <div class="flex items-center gap-2">
                 <span class="font-display text-xs font-bold text-white">${app.name}</span>
-                <span class="app-status-dot hidden h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34D399]"></span>
+                <span class="app-status-dot hidden h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34D399]"></span>
               </div>
             </div>
 
-            <div class="flex items-center gap-2">
-              <div class="vu-meter flex h-3 w-7 items-end gap-[2px]" id="vu-${app.id}">
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
-                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/15"></div>
+            <div class="flex items-center gap-2.5">
+              <div class="vu-meter flex h-3.5 w-7 items-end gap-[2px]" id="vu-${app.id}">
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
+                <div class="vu-bar h-[2px] w-1 rounded-sm bg-white/20"></div>
               </div>
 
-              <div class="flex items-center gap-1.5" onclick="event.stopPropagation()">
+              <div class="flex items-center gap-2" onclick="event.stopPropagation()">
                 <button class="power-btn flex items-center justify-center text-slate-500 hover:scale-110 hover:text-sky-400 ${app.tapped ? 'text-sky-400' : ''}" onclick="toggleAppCapture('${app.id}')" title="${app.tapped ? 'Tắt capture' : 'Bật capture'}">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
                   </svg>
                 </button>
 
                 <button class="expand-btn flex h-5 w-5 items-center justify-center rounded-full text-slate-400 hover:bg-white/10 disabled:opacity-20" id="expand-btn-${app.id}" onclick="toggleRowExpand('${app.id}')" ${!app.tapped ? 'disabled' : ''} title="Chi tiết thiết lập">
-                  <svg class="expand-icon h-2.5 w-2.5 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="expand-icon h-3 w-3 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </button>
@@ -488,13 +786,13 @@ cd voice-macos
             </div>
           </div>
 
-          <div class="row-details ${app.expanded && app.tapped ? 'flex' : 'hidden'} flex-col gap-2.5 border-t border-white/10 bg-black/20 p-2.5 text-xs">
+          <div class="row-details ${app.expanded && app.tapped ? 'flex' : 'hidden'} flex-col gap-3 border-t border-white/10 bg-black/30 p-3 text-xs">
             <div class="flex items-center justify-between">
-              <span class="flex items-center gap-1 font-display text-[10px] font-extrabold tracking-wider text-slate-400">
+              <span class="flex items-center gap-1.5 font-display text-[10px] font-extrabold tracking-wider text-slate-400">
                 <svg class="h-3 w-3 fill-sky-400" viewBox="0 0 24 24"><path d="M19 12H5M12 19l7-7-7-7"/></svg>
                 ROUTE TO
               </span>
-              <select class="max-w-[130px] appearance-none rounded border border-white/10 bg-[#0E1626] px-1.5 py-0.5 text-[10px] font-semibold text-slate-200 outline-none hover:border-sky-400/40" onchange="changeAppRoute('${app.id}', this.value)">
+              <select class="max-w-[135px] appearance-none rounded-lg border border-white/10 bg-[#0D1628] px-2 py-1 text-[10px] font-semibold text-slate-200 outline-none hover:border-sky-400/50" onchange="changeAppRoute('${app.id}', this.value)">
                 <option value="default" ${app.outputDevice === 'default' ? 'selected' : ''}>System Default</option>
                 <option value="speakers" ${app.outputDevice === 'speakers' ? 'selected' : ''}>MacBook Speakers</option>
                 <option value="headphones" ${app.outputDevice === 'headphones' ? 'selected' : ''}>AirPods Max</option>
@@ -502,43 +800,49 @@ cd voice-macos
               </select>
             </div>
 
-            <div class="flex items-center gap-2">
-              <button class="mute-btn flex h-4 w-4 items-center justify-center text-sky-400 ${app.muted ? 'text-slate-500' : ''}" onclick="toggleAppMute('${app.id}')">
+            <div class="flex items-center gap-2.5">
+              <button class="mute-btn flex h-5 w-5 items-center justify-center text-sky-400 ${app.muted ? 'text-slate-500' : ''}" onclick="toggleAppMute('${app.id}')">
                 ${app.muted ? 
-                  `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-9 5.77H1v6h4l5 5V4L5 9z"/></svg>` :
-                  `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`
+                  `<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-9 5.77H1v6h4l5 5V4L5 9z"/></svg>` :
+                  `<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`
                 }
               </button>
               
               <div class="relative flex-1">
-                <input type="range" class="vol-slider h-1 w-full cursor-pointer appearance-none rounded bg-white/15 outline-none accent-sky-400" min="0" max="2" step="0.05" value="${app.volume}" oninput="changeAppVolume('${app.id}', this.value)">
+                <input type="range" class="vol-slider h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/15 outline-none accent-sky-400" min="0" max="2" step="0.05" value="${app.volume}" oninput="changeAppVolume('${app.id}', this.value)">
               </div>
-              <span class="w-8 text-right font-mono text-[10px] text-slate-400" id="vol-pct-${app.id}">${Math.round(app.volume * 100)}%</span>
+              <span class="w-9 text-right font-mono text-[10px] font-bold text-slate-300" id="vol-pct-${app.id}">${Math.round(app.volume * 100)}%</span>
 
-              <button class="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 text-[9px] font-bold text-sky-400 ${app.eqBypassed ? 'border-white/10 bg-white/5 text-slate-500' : ''}" onclick="toggleEQBypass('${app.id}')">
-                ${app.eqBypassed ? 'Bypassed' : 'EQ On'}
+              <button class="rounded-full border border-sky-400/40 bg-sky-400/10 px-2.5 py-0.5 text-[9px] font-bold text-sky-400 transition hover:bg-sky-400/20 ${app.eqBypassed ? 'border-white/10 bg-white/5 text-slate-500' : ''}" onclick="toggleEQBypass('${app.id}')">
+                ${app.eqBypassed ? 'Bypassed' : 'EQ ON'}
               </button>
             </div>
 
-            <div class="eq-panel ${app.eqBypassed ? 'hidden' : 'flex'} flex-col gap-1" id="eq-panel-${app.id}">
-              <div class="relative h-20 w-full overflow-hidden rounded border border-white/10 bg-black/30" id="eq-container-${app.id}">
+            <div class="eq-panel ${app.eqBypassed ? 'hidden' : 'flex'} flex-col gap-1.5" id="eq-panel-${app.id}">
+              <div class="relative h-20 w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-inner" id="eq-container-${app.id}">
                 <svg id="eq-svg-${app.id}" viewBox="0 0 320 80" class="h-full w-full">
                   <defs>
                     <linearGradient id="eq-grad-${app.id}" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35"/>
+                      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.4"/>
                       <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
                     </linearGradient>
                   </defs>
-                  <line x1="0" y1="10" x2="320" y2="10" stroke="rgba(255,255,255,0.04)" stroke-dasharray="2,2"/>
-                  <line x1="0" y1="40" x2="320" y2="40" stroke="rgba(255,255,255,0.1)"/>
-                  <line x1="0" y1="70" x2="320" y2="70" stroke="rgba(255,255,255,0.04)" stroke-dasharray="2,2"/>
+                  <line x1="0" y1="15" x2="320" y2="15" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
+                  <line x1="0" y1="40" x2="320" y2="40" stroke="rgba(255,255,255,0.15)"/>
+                  <line x1="0" y1="65" x2="320" y2="65" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
                   
                   <path id="eq-fill-${app.id}" d="" fill="url(#eq-grad-${app.id})"/>
-                  <path id="eq-line-${app.id}" d="" fill="none" stroke="#38BDF8" stroke-width="1.8"/>
+                  <path id="eq-line-${app.id}" d="" fill="none" stroke="#38BDF8" stroke-width="2"/>
                 </svg>
               </div>
-              <div class="flex justify-between px-1 font-mono text-[7.5px] text-slate-500">
-                <span>32</span><span>64</span><span>125</span><span>250</span><span>500</span><span>1k</span><span>2k</span><span>4k</span><span>8k</span><span>16k</span>
+
+              <!-- Presets Pills -->
+              <div class="flex items-center gap-1 overflow-x-auto py-0.5 no-scrollbar">
+                ${Object.keys(PRESETS).map(pName => `
+                  <button onclick="applyPresetToApp('${app.id}', '${pName}')" class="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[8.5px] font-semibold text-slate-300 transition hover:border-sky-400/40 hover:bg-sky-400/10 hover:text-sky-300">
+                    ${pName}
+                  </button>
+                `).join('')}
               </div>
             </div>
           </div>
@@ -549,6 +853,13 @@ cd voice-macos
           updateEQGraph(app.id);
         }
       });
+    }
+
+    function applyPresetToApp(appId, presetName) {
+      const app = state.apps.find(a => a.id === appId);
+      if (!app || !PRESETS[presetName]) return;
+      app.eqBands = [...PRESETS[presetName]];
+      updateEQGraph(appId);
     }
 
     function toggleAppCapture(id) {
@@ -656,7 +967,7 @@ cd voice-macos
         circle.setAttribute('cy', pt.y);
         circle.setAttribute('r', '4');
         circle.setAttribute('fill', '#38BDF8');
-        circle.setAttribute('style', 'cursor: ns-resize; filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.8));');
+        circle.setAttribute('style', 'cursor: ns-resize; filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.9));');
         circle.setAttribute('data-idx', idx);
         
         circle.addEventListener('mousedown', (e) => startDrag(e, appId, idx));
@@ -747,8 +1058,18 @@ cd voice-macos
       
       navigator.clipboard.writeText(textToCopy).then(() => {
         button.classList.add('copied');
+        const copyIcon = button.querySelector('.copy-icon');
+        const checkIcon = button.querySelector('.check-icon');
+        if (copyIcon && checkIcon) {
+          copyIcon.classList.add('hidden');
+          checkIcon.classList.remove('hidden');
+        }
         setTimeout(() => {
           button.classList.remove('copied');
+          if (copyIcon && checkIcon) {
+            copyIcon.classList.remove('hidden');
+            checkIcon.classList.add('hidden');
+          }
         }, 2000);
       }).catch(err => {
         console.error('Không thể sao chép văn bản: ', err);
@@ -777,11 +1098,11 @@ cd voice-macos
         eyeRest.phase = 'studying';
         eyeRest.remaining = eyeRest.studyMin * 60;
 
-        btn.className = 'flex items-center justify-center gap-1.5 rounded-lg bg-red-500/20 p-1.5 text-xs font-bold text-red-400 transition hover:bg-red-500/30';
+        btn.className = 'flex items-center justify-center gap-1.5 rounded-xl bg-red-500/20 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500/30';
         btnText.innerText = 'Dừng';
         btnIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
         
-        badge.className = 'flex items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400';
+        badge.className = 'flex items-center gap-1.5 rounded-full bg-sky-400/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-sky-400 border border-sky-400/30';
         badge.style.display = 'flex';
         updateEyeRestBadge();
 
@@ -794,7 +1115,7 @@ cd voice-macos
         eyeRest.timer = null;
         eyeRest.phase = 'idle';
 
-        btn.className = 'flex items-center justify-center gap-1.5 rounded-lg bg-sky-400 p-1.5 text-xs font-bold text-slate-950 transition hover:bg-sky-300';
+        btn.className = 'flex items-center justify-center gap-1.5 rounded-xl bg-sky-400 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-300';
         btnText.innerText = 'Bắt đầu';
         btnIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
         
@@ -812,11 +1133,11 @@ cd voice-macos
         if (eyeRest.phase === 'studying') {
           eyeRest.phase = 'breaking';
           eyeRest.remaining = eyeRest.breakMin * 60;
-          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-red-400';
+          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-red-400 border border-red-500/30';
         } else {
           eyeRest.phase = 'studying';
           eyeRest.remaining = eyeRest.studyMin * 60;
-          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-400';
+          document.getElementById('eye-rest-status-badge').className = 'flex items-center gap-1.5 rounded-full bg-sky-400/15 px-2.5 py-0.5 font-mono text-[10px] font-bold text-sky-400 border border-sky-400/30';
         }
       }
 
@@ -838,62 +1159,7 @@ cd voice-macos
 
     renderAppsList();
     animateVUMeters();
-
-    // Doraemon Interactive Cursor Follower
-    const cursor = document.getElementById('custom-cursor');
-    if (cursor && window.matchMedia('(pointer: fine)').matches) {
-      let isHovered = false;
-      
-      document.addEventListener('mousemove', (e) => {
-        const scale = isHovered ? 'scale(1.3) rotate(8deg)' : 'scale(1) rotate(0deg)';
-        cursor.style.transform = `translate3d(${e.clientX + 10}px, ${e.clientY + 10}px, 0) ${scale}`;
-      });
-
-      document.addEventListener('mouseover', (e) => {
-        if (e.target.closest('a, button, select, input, .app-row, .bento-card, .copy-btn, #popover-trigger')) {
-          isHovered = true;
-          cursor.classList.add('drop-shadow-[0_0_12px_rgba(0,160,233,0.8)]');
-        }
-      });
-
-      document.addEventListener('mouseout', (e) => {
-        if (e.target.closest('a, button, select, input, .app-row, .bento-card, .copy-btn, #popover-trigger')) {
-          isHovered = false;
-          cursor.classList.remove('drop-shadow-[0_0_12px_rgba(0,160,233,0.8)]');
-        }
-      });
-    }
   </script>
 
-  <!-- Custom Doraemon Mouse Cursor Follower -->
-  <div id="custom-cursor" class="pointer-events-none fixed top-0 left-0 z-[9999] hidden h-9 w-9 transition-transform duration-100 ease-out md:block">
-    <svg viewBox="0 0 100 100" class="h-full w-full drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
-      <!-- Blue head -->
-      <circle cx="50" cy="46" r="44" fill="#00A0E9" stroke="#000" stroke-width="3"/>
-      <!-- White face -->
-      <ellipse cx="50" cy="54" rx="35" ry="30" fill="#FFF" stroke="#000" stroke-width="2.5"/>
-      <!-- Eyes -->
-      <ellipse cx="40" cy="28" rx="8" ry="12" fill="#FFF" stroke="#000" stroke-width="2.5"/>
-      <ellipse cx="60" cy="28" rx="8" ry="12" fill="#FFF" stroke="#000" stroke-width="2.5"/>
-      <circle cx="43" cy="28" r="3" fill="#000"/>
-      <circle cx="57" cy="28" r="3" fill="#000"/>
-      <!-- Nose -->
-      <circle cx="50" cy="41" r="6" fill="#EE2737" stroke="#000" stroke-width="2.5"/>
-      <circle cx="48" cy="39" r="2" fill="#FFF"/>
-      <!-- Nose line & Smile -->
-      <line x1="50" y1="47" x2="50" y2="65" stroke="#000" stroke-width="2.5"/>
-      <path d="M 28 58 Q 50 78 72 58" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <!-- Whiskers -->
-      <line x1="18" y1="46" x2="36" y2="49" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="16" y1="55" x2="35" y2="55" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="18" y1="64" x2="36" y2="61" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="82" y1="46" x2="64" y2="49" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="84" y1="55" x2="65" y2="55" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="82" y1="64" x2="64" y2="61" stroke="#000" stroke-width="2.5" stroke-linecap="round"/>
-      <!-- Red Collar & Bell -->
-      <rect x="22" y="84" width="56" height="10" rx="5" fill="#EE2737" stroke="#000" stroke-width="2"/>
-      <circle cx="50" cy="90" r="5" fill="#FFD700" stroke="#000" stroke-width="1.5"/>
-    </svg>
-  </div>
 </body>
 </html>
